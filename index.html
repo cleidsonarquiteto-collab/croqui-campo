@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}*,*::before,*::after{box-sizing:inherit}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head><body>
+<title>Croqui de Campo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#1d3b5c">
+<style>
+/* Layout: app de tela única. Barra de estado no topo, prancha (malha) ao centro, ferramentas embaixo, painel lateral (largo) ou gaveta (celular). Fontes do sistema: o app precisa abrir sem internet. */
+:root{
+  --bg:#eef1ef; --paper:#fbfcfa; --ink:#1b2530; --muted:#5d6b77; --line:#c9d3d0; --grid:#d7e0dd; --grid2:#b6c4c0;
+  --model:#1d4e89; --accent:#d99a00; --accent-ink:#2b1f00; --ok:#1f7a45; --bad:#c0392b; --wait:#b7791f; --panel:#ffffff; --chip:#e6ecea;
+  --f-ui: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+  --f-data: ui-monospace,"Roboto Mono","SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161b; --paper:#151c22; --ink:#e3e9ee; --muted:#93a2ae; --line:#2b3640; --grid:#1f2a33; --grid2:#2f3d48;
+  --model:#7fb2ec; --accent:#f2b705; --accent-ink:#1d1500; --ok:#4cc27e; --bad:#f06a5a; --wait:#e0a743; --panel:#1a2229; --chip:#24303a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161b; --paper:#151c22; --ink:#e3e9ee; --muted:#93a2ae; --line:#2b3640; --grid:#1f2a33; --grid2:#2f3d48;
+  --model:#7fb2ec; --accent:#f2b705; --accent-ink:#1d1500; --ok:#4cc27e; --bad:#f06a5a; --wait:#e0a743; --panel:#1a2229; --chip:#24303a; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;overflow:hidden}
+#app{height:100%;display:grid;grid-template-rows:auto 1fr auto;grid-template-columns:1fr auto}
+header{grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-block:8px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;margin:0;font-weight:700;letter-spacing:.01em}
+header .proj{font-family:var(--f-data);font-size:12.5px;color:var(--muted)}
+.sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:4px 10px;border-radius:999px;background:var(--chip);font-variant-numeric:tabular-nums}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.on .dot{background:var(--ok)} .off .dot{background:var(--bad)}
+button{font:inherit;color:inherit;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;min-height:40px}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+button.pri{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:650}
+button.warn{color:var(--bad)}
+#stage{position:relative;overflow:hidden;background:var(--paper);touch-action:none;min-height:0}
+#svg{position:absolute;inset:0;width:100%;height:100%;display:block;user-select:none}
+#hint{position:absolute;left:max(12px,env(safe-area-inset-left,0px));top:10px;font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;max-width:calc(100% - 24px);pointer-events:none}
+#coord{position:absolute;right:max(12px,env(safe-area-inset-right,0px));top:10px;font-family:var(--f-data);font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;pointer-events:none;font-variant-numeric:tabular-nums}
+#tools{grid-column:1;display:flex;gap:6px;overflow-x:auto;padding-block:8px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));border-top:1px solid var(--line);background:var(--panel)}
+#tools button{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:68px;font-size:12.5px;padding:6px 8px}
+#tools button svg{width:22px;height:22px}
+#tools button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+#panel{grid-row:2/4;grid-column:2;width:360px;max-width:100vw;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;border:0;border-radius:0;background:none;border-bottom:3px solid transparent;font-size:13.5px}
+.tabs button[aria-selected="true"]{border-bottom-color:var(--accent);font-weight:650}
+.pane{overflow:auto;padding:14px 16px 24px;display:flex;flex-direction:column;gap:12px;min-height:0;flex:1}
+.pane h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:6px 0 0}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+input,textarea,select{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:40px}
+textarea{min-height:70px;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{min-width:0}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{flex:1;border:0;border-radius:0;background:var(--paper)}
+.seg button[aria-pressed="true"].s-ok{background:var(--ok);color:#fff}
+.seg button[aria-pressed="true"].s-div{background:var(--bad);color:#fff}
+.seg button[aria-pressed="true"].s-pen{background:var(--wait);color:#fff}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--f-data);font-variant-numeric:tabular-nums;word-break:break-all}
+.delta-ok{color:var(--ok)} .delta-bad{color:var(--bad)}
+.list{display:flex;flex-direction:column;gap:6px}
+.item{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;text-align:left;padding:8px 10px}
+.item .t{font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .s{font-family:var(--f-data);font-size:11.5px;color:var(--muted)}
+.badge{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--chip);white-space:nowrap}
+.b-ok{background:var(--ok);color:#fff}.b-div{background:var(--bad);color:#fff}.b-pen{background:var(--wait);color:#fff}
+.sw{width:10px;height:10px;border-radius:50%}
+.thumbs{display:flex;gap:6px;flex-wrap:wrap}
+.thumbs img{width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+.note{font-size:12.5px;color:var(--muted);line-height:1.45}
+.ex{font-size:10.5px;padding:1px 6px;border-radius:4px;border:1px dashed var(--muted);color:var(--muted)}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:9px 14px;border-radius:8px;font-size:13.5px;max-width:90vw;z-index:20}
+#exportBox{width:100%;min-height:140px;font-family:var(--f-data);font-size:11.5px}
+.layer{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);flex-direction:row}
+.layer input{min-height:auto;width:20px;height:20px}
+@media (max-width:820px){
+  #app{grid-template-columns:1fr}
+  #panel{grid-row:auto;grid-column:1;position:fixed;left:0;right:0;bottom:0;width:auto;max-height:62%;border-left:0;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -8px 24px rgba(0,0,0,.18);z-index:15;padding-bottom:env(safe-area-inset-bottom,0px)}
+  #panel.closed{display:none}
+  header{gap:6px}
+  header .proj{display:none}
+  header h1{display:none}
+  header .sp{display:none}
+  #net #netTxt{font-size:11.5px}
+  header button{min-height:36px;padding:6px 10px}
+  #hint{top:auto;bottom:10px}
+  #btnClose{display:block}
+}
+#btnClose{flex:0 0 48px}
+@media (min-width:821px){#btnPanel{display:none}#btnClose{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<style>
+:root{--inst:#7b3fa8;--wall:#f4f6f5;--floor:#e9eeec}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--inst:#c79bf0;--wall:#1b242c;--floor:#18232b}}
+:root[data-theme="dark"]{--inst:#c79bf0;--wall:#1b242c;--floor:#18232b}
+.view{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:0 0 auto}
+.view button{border:0;border-radius:0;background:var(--paper);font-size:12.5px;min-width:0;padding:6px 10px}
+.view button[aria-pressed="true"]{background:var(--model);color:var(--paper);font-weight:650}
+#palette{position:absolute;left:0;right:0;bottom:52px;display:flex;gap:6px;overflow-x:auto;padding:6px max(12px,env(safe-area-inset-left,0px))}
+#palette button{flex:0 0 auto;min-height:36px;font-size:12.5px;padding:5px 10px;background:var(--panel)}
+#palette button.inst{border-color:var(--inst);color:var(--inst)}
+#palette button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+#palette .grp{align-self:center;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);flex:0 0 auto;padding:0 4px}
+.radio{display:flex;flex-direction:column;gap:6px}
+.radio label{flex-direction:row;align-items:flex-start;gap:8px;color:var(--ink);font-size:14px}
+.radio input{min-height:auto;margin-top:3px}
+.thumbs img{cursor:zoom-in}
+#bigPhoto{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px}
+#bigPhoto img{max-height:100%;max-width:100%}
+#rec{position:fixed;inset:0;background:#000;color:#fff;z-index:40;display:flex;flex-direction:column}
+#rec video{flex:1;min-height:0;width:100%;object-fit:contain;background:#000}
+#recBar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px max(16px,env(safe-area-inset-left,0px)) calc(12px + env(safe-area-inset-bottom,0px))}
+#recBar button{background:#c0392b;color:#fff;border:0;font-weight:700}
+#recInfo,.sensLive{font-family:var(--f-data);font-size:13px;font-variant-numeric:tabular-nums}
+.midia{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-radius:8px;padding:8px}
+.midia video,.midia audio{width:100%;max-height:240px;background:#000;border-radius:6px}
+.sensLive{color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid2 label{min-width:0}
+.fsz{display:inline-flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums;font-size:12.5px}
+.fsz button{min-width:40px;padding:6px 8px;font-weight:700}
+#fsVal{min-width:38px;text-align:center}
+.fszl{font-size:11px;color:var(--muted);max-width:56px;line-height:1.1}
+#btnBack{font-weight:650;padding:6px 12px}
+#btnBack:disabled{opacity:.35}
+.crumb{font-size:12.5px;color:var(--muted);padding:8px 16px 0}
+</style>
+
+<div id="app">
+  <header>
+    <button id="btnBack" aria-label="Voltar ao passo anterior" disabled>‹ Voltar</button>
+    <h1>Croqui de Campo</h1>
+    <span class="proj" id="projName">—</span>
+    <span class="sp"></span>
+    <span class="pill" id="net"><span class="dot"></span><span id="netTxt">…</span></span>
+    <span class="pill" id="pend">0 pendentes</span>
+    <span class="fsz" role="group" aria-label="Tamanho do texto do desenho"><span class="fszl">texto do desenho</span><button id="fsMenos" aria-label="Diminuir texto do desenho">A−</button><span id="fsVal">100%</span><button id="fsMais" aria-label="Aumentar textos">A+</button></span>
+    <button class="pri" id="btnSync">Sincronizar</button>
+    <button id="btnPanel" aria-controls="panel">☰ Menu</button>
+  </header>
+
+  <div id="stage">
+    <svg id="svg" aria-label="Prancha com malha de coordenadas"></svg>
+    <div id="hint"></div>
+    <div id="coord">x —  y —</div>
+    <div id="palette" hidden></div>
+  </div>
+
+  <nav id="tools" aria-label="Ferramentas">
+    <div class="view" role="group" aria-label="Vista"><button id="vPlanta" aria-pressed="true">Planta</button><button id="vPlanif" aria-pressed="false">Planificação</button></div>
+    <button data-tool="nav" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>Mover</button>
+    <button data-tool="desenhar" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V8l6-4h10v16z"/><circle cx="4" cy="20" r="1.8"/><circle cx="10" cy="4" r="1.8"/></svg>Desenhar ambiente</button>
+    <button data-tool="elemento" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="9" height="18"/><circle cx="11" cy="12" r=".8" fill="currentColor"/><rect x="16" y="9" width="5" height="5" rx="1"/></svg>Elemento</button>
+    <button data-tool="foto" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/></svg>Foto da face</button>
+    <button data-tool="conferir" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 20h18"/><path d="M5 20V8h14v12"/><path d="M9 13l2 2 4-4"/></svg>Conferir face</button>
+    <button data-tool="nota" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>Anotar</button>
+    <button data-tool="medida" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>Medir</button>
+    <button data-tool="calibrar" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.6"/><circle cx="16" cy="16" r="1.6"/><path d="M9.5 9.5l5 5"/></svg>Calibrar imagem</button>
+    <button id="btnFit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Enquadrar</button>
+  </nav>
+
+  <aside id="panel" class="closed">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="item" aria-selected="true">Selecionado</button>
+      <button role="tab" data-tab="lista" aria-selected="false">Registros</button>
+      <button role="tab" data-tab="proj" aria-selected="false">Projeto</button>
+      <button id="btnClose" aria-label="Fechar menu e voltar ao desenho">✕</button>
+    </div>
+    <div class="crumb" id="crumb"></div>
+    <div class="pane" id="pane-item"></div>
+    <div class="pane" id="pane-lista" hidden></div>
+    <div class="pane" id="pane-proj" hidden>
+      <h2>Projeto no aparelho</h2>
+      <div class="row"><select id="projSel" style="flex:1"></select><button id="btnNovo">Novo projeto</button></div>
+      <div id="novoBox" hidden style="display:flex;flex-direction:column;gap:10px">
+        <div class="radio" role="radiogroup" aria-label="Como o projeto nasce">
+          <label><input type="radio" name="orig" value="existente" checked><span><b>De um projeto existente.</b> Carrega o modelo .json; em campo você dá a designação dos ambientes, confere e completa.</span></label>
+          <label><input type="radio" name="orig" value="croqui"><span><b>Do croqui.</b> Projeto novo: você desenha os ambientes na malha, na obra.</span></label>
+          <label><input type="radio" name="orig" value="generico"><span><b>Genérico.</b> Captura rápida sem nome definido; depois o prédio absorve.</span></label>
+        </div>
+        <label>Nome do projeto<input id="nNome" placeholder="ex.: Casa Rua 3 · levantamento"></label>
+        <label id="nFileL">Modelo canônico (.json)<input type="file" id="nFile" accept=".json,application/json"></label>
+        <div class="grid2"><label>Pé-direito padrão (m)<input id="nPd" inputmode="decimal" value="2,80"></label><label>Passo da malha (m)<select id="nStep"><option>0.10</option><option>0.25</option><option selected>0.50</option><option>1.00</option></select></label></div>
+        <div class="row"><button class="pri" id="nCriar">Criar projeto</button><button id="nCancel">Cancelar</button></div>
+      </div>
+      <dl class="kv" id="projInfo"></dl>
+      <div class="grid2"><label>Nome<input id="pNome"></label><label>Pé-direito padrão (m)<input id="pPd" inputmode="decimal"></label></div>
+      <label>Pasta do projeto (link do Drive, OneDrive ou pasta compartilhada)<input id="pPasta" placeholder="https://drive.google.com/… ou https://onedrive.live.com/…"></label>
+      <p class="note" id="pPastaLink"></p>
+
+      <h2>Sistema de coordenadas</h2>
+      <p class="note">O croqui usa um sistema próprio: origem (0;0) no ponto que você escolher, x para a direita, y para cima, em metros. Abaixo, onde essa origem cai no sistema maior (lote, prédio, levantamento). Na exportação, cada registro leva as duas coordenadas.</p>
+      <div class="grid2"><label>X da origem no sistema maior<input id="gX" inputmode="decimal"></label><label>Y da origem no sistema maior<input id="gY" inputmode="decimal"></label>
+      <label>Cota (Z) do piso<input id="gZ" inputmode="decimal"></label><label>Rotação (graus, anti-horário)<input id="gR" inputmode="decimal"></label></div>
+      <label>Referência do sistema maior<input id="gRef" placeholder="ex.: lote-353 · vértice V1 · SIRGAS 2000 UTM 23S"></label>
+
+      <h2>Camadas</h2>
+      <label class="layer"><input type="checkbox" id="lyGrid" checked> L0 malha (como a planilha)</label>
+      <label class="layer"><input type="checkbox" id="lyImg" checked> Imagem de fundo (planificação ou planta)</label>
+      <label class="layer"><input type="checkbox" id="lyModel" checked> Ambientes (faces e vértices)</label>
+      <label class="layer"><input type="checkbox" id="lyKeys" checked> L5 chaves (nomes)</label>
+      <label class="layer"><input type="checkbox" id="lyElem" checked> Elementos</label>
+      <label class="layer"><input type="checkbox" id="lyReg" checked> Registros de campo</label>
+      <div class="row">
+        <label style="flex:1">Passo da malha (m)<select id="gridStep"><option>0.10</option><option>0.25</option><option selected>0.50</option><option>1.00</option></select></label>
+        <label class="layer" style="align-self:flex-end;padding-bottom:10px"><input type="checkbox" id="snap" checked> Imantar</label>
+      </div>
+
+      <h2>Carregar</h2>
+      <label>Juntar pacote de campo ou modelo (.json)<input type="file" id="fJson" accept=".json,application/json"></label>
+      <label>Imagem de fundo (PNG ou JPG)<input type="file" id="fImg" accept="image/*"></label>
+      <p class="note" id="imgInfo">Nenhuma imagem carregada.</p>
+
+      <h2>Guardar e sincronizar</h2>
+      <p class="note">“Compartilhar” abre o menu do Android: escolha Drive, OneDrive ou outro app. Esses apps guardam o arquivo e sobem sozinhos quando a conexão voltar.</p>
+      <div class="row"><button class="pri" id="btnShareCampo">Compartilhar registros</button><button id="btnShareProj">Compartilhar projeto completo</button></div>
+      <label>Autor dos registros<input id="autor" value="Operador"></label>
+      <label>Endereço de envio direto (opcional)<input id="endpoint" placeholder="https://… (recebe POST com o pacote JSON)"></label>
+      <label class="layer"><input type="checkbox" id="autoSync" checked> Enviar sozinho quando a conexão voltar</label>
+      <div class="row"><button id="btnCopy">Copiar pacote</button></div>
+      <textarea id="exportBox" readonly placeholder="O pacote aparece aqui."></textarea>
+
+      <h2>Manutenção</h2>
+      <div class="row"><button id="btnClearEx">Apagar exemplos</button><button class="warn" id="btnReset">Apagar este projeto</button></div>
+      <p class="note" id="resetAsk" hidden>Isso apaga o projeto e os registros dele deste aparelho. <button class="warn" id="btnResetYes">Sim, apagar</button> <button id="btnResetNo">Cancelar</button></p>
+      <p class="note">Tudo fica gravado no próprio aparelho (IndexedDB) e funciona sem internet. Versão 0.2.</p>
+    </div>
+  </aside>
+</div>
+<div id="toast" hidden></div>
+<div id="bigPhoto" hidden><img alt="foto ampliada"></div>
+<div id="rec" hidden><video id="recPrev" muted playsinline></video><div id="recBar"><button id="recStop">■ Parar e salvar</button><button id="recCancel" style="background:#444">Descartar</button><span id="recInfo"></span></div></div>
+
+<script id="seedModel" type="application/json">{"projeto": "exemplo", "ref": "R0-malha-local", "eixos": [], "vertices": [{"id": "A1.0", "x": 0, "y": 0, "faixa_h": "A", "faixa_v": "1", "ocorrencia": "0"}, {"id": "I1.0", "x": 4, "y": 0, "faixa_h": "I", "faixa_v": "1", "ocorrencia": "0"}, {"id": "I7.0", "x": 4, "y": 3, "faixa_h": "I", "faixa_v": "7", "ocorrencia": "0"}, {"id": "A7.0", "x": 0, "y": 3, "faixa_h": "A", "faixa_v": "7", "ocorrencia": "0"}], "compartimentos": [{"id": "CP-XYZ", "nome": "Ambiente de exemplo", "bloco": "B1", "piso": "P0", "faces": "a;b;c;d", "area_eixo_m2": 12.0}], "faces": [{"id": "CP-XYZ-a", "compartimento": "CP-XYZ", "de": "A1.0", "para": "I1.0", "eixo": "", "secao": "SEC-XYZ-A00", "lado": "E", "comprimento_eixo_m": 4.0}, {"id": "CP-XYZ-b", "compartimento": "CP-XYZ", "de": "I1.0", "para": "I7.0", "eixo": "", "secao": "SEC-XYZ-B00", "lado": "E", "comprimento_eixo_m": 3.0}, {"id": "CP-XYZ-c", "compartimento": "CP-XYZ", "de": "I7.0", "para": "A7.0", "eixo": "", "secao": "SEC-XYZ-C00", "lado": "E", "comprimento_eixo_m": 4.0}, {"id": "CP-XYZ-d", "compartimento": "CP-XYZ", "de": "A7.0", "para": "A1.0", "eixo": "", "secao": "SEC-XYZ-D00", "lado": "E", "comprimento_eixo_m": 3.0}]}</script>
+<script>
+"use strict";
+/* ============ armazenamento local ============ */
+const DB=(()=>{let db=null,mem={kv:{},reg:{}};
+  const open=()=>new Promise(res=>{try{const r=indexedDB.open('croqui-campo',1);r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('kv');d.createObjectStore('reg',{keyPath:'guid'})};r.onsuccess=()=>{db=r.result;res()};r.onerror=()=>res()}catch(e){res()}});
+  const tx=(s,m,fn)=>new Promise(res=>{try{const t=db.transaction(s,m);const q=fn(t.objectStore(s));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>res(null)}catch(e){res(null)}});
+  return{open,get:k=>db?tx('kv','readonly',s=>s.get(k)):Promise.resolve(mem.kv[k]),set:(k,v)=>db?tx('kv','readwrite',s=>s.put(v,k)):(mem.kv[k]=v,Promise.resolve()),
+    delk:k=>db?tx('kv','readwrite',s=>s.delete(k)):(delete mem.kv[k],Promise.resolve()),
+    all:()=>db?tx('reg','readonly',s=>s.getAll()).then(x=>x||[]):Promise.resolve(Object.values(mem.reg)),
+    put:r=>db?tx('reg','readwrite',s=>s.put(r)):(mem.reg[r.guid]=r,Promise.resolve()),del:g=>db?tx('reg','readwrite',s=>s.delete(g)):(delete mem.reg[g],Promise.resolve())}})();
+
+/* ============ biblioteca de elementos (proposta) ============ */
+const ELEM=[
+ {cod:'P',nome:'Porta',fam:'arquitetonico',onde:'face',larg:.80,alt:2.10,h0:0},
+ {cod:'J',nome:'Janela',fam:'arquitetonico',onde:'face',larg:1.00,alt:1.00,h0:1.10},
+ {cod:'V',nome:'Vão livre',fam:'arquitetonico',onde:'face',larg:.80,alt:2.10,h0:0},
+ {cod:'NI',nome:'Nicho / prateleira',fam:'arquitetonico',onde:'face',larg:.60,alt:.40,h0:1.20},
+ {cod:'BAN',nome:'Bancada',fam:'arquitetonico',onde:'face',larg:1.50,alt:.05,h0:.90},
+ {cod:'PIL',nome:'Pilar',fam:'arquitetonico',onde:'piso',larg:.20,alt:.20},
+ {cod:'TUG',nome:'Tomada de uso geral',fam:'instalacao',onde:'face',larg:.10,alt:.10,h0:.30,sis:'ELE',clado:'G1.TERM.PU',portas:['ent']},
+ {cod:'TUE',nome:'Tomada de uso específico',fam:'instalacao',onde:'face',larg:.10,alt:.10,h0:2.20,sis:'ELE',clado:'G1.TERM.PU',portas:['ent']},
+ {cod:'INT',nome:'Interruptor',fam:'instalacao',onde:'face',larg:.10,alt:.10,h0:1.00,sis:'ELE',clado:'G2.CTRL.DISJ',portas:['ent','sai']},
+ {cod:'SPL',nome:'Split (ar-condicionado)',fam:'instalacao',onde:'face',larg:.80,alt:.28,h0:2.30,sis:'ELE',clado:'G1.TERM.PU',portas:['ent']},
+ {cod:'PL',nome:'Ponto de luz',fam:'instalacao',onde:'teto',larg:.15,alt:.15,sis:'ELE',clado:'G1.TERM.PU',portas:['ent']},
+ {cod:'RJ',nome:'Lógica / RJ45',fam:'instalacao',onde:'face',larg:.10,alt:.10,h0:.30,sis:'DAD',clado:'G1.TERM.PU',portas:['ent']},
+ {cod:'AF',nome:'Ponto de água fria',fam:'instalacao',onde:'face',larg:.08,alt:.08,h0:.60,sis:'AF',clado:'G1.TERM.PU',portas:['ent']},
+ {cod:'AQ',nome:'Ponto de água quente',fam:'instalacao',onde:'face',larg:.08,alt:.08,h0:.60,sis:'AQ',clado:'G1.TERM.PU',portas:['ent']},
+ {cod:'ESG',nome:'Espera de esgoto (parede)',fam:'instalacao',onde:'face',larg:.10,alt:.10,h0:.50,sis:'ESG',clado:'G1.TERM.TAMP',portas:['sai']},
+ {cod:'RAL',nome:'Ralo sifonado',fam:'instalacao',onde:'piso',larg:.15,alt:.15,sis:'ESG',clado:'G3.JUN.CX',portas:['ent','sai'],supo:'entradas de aparelhos a ligar no sistema de instalações'}];
+const ONDE={face:'parede (face)',piso:'piso do ambiente',teto:'teto do ambiente'};
+const EL=c=>ELEM.find(e=>e.cod===c)||ELEM[0];
+
+/* ============ estado ============ */
+const S={proj:null,regs:[],sel:null,tool:'nav',view:'planta',comp:null,classe:'P',cfg:{fs:1,autor:'Operador',endpoint:'',auto:true,step:.5,snap:true,projId:null},draw:[],pendMed:null,cal:[],img:null,GEO:{}};
+const V={ox:60,oy:400,k:60};
+const $=id=>document.getElementById(id), svg=$('svg');
+const uuid=()=>(crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c=='x'?r:(r&3|8)).toString(16)}));
+const f2=n=>n==null?'—':(Math.round(n*100)/100).toFixed(2).replace('.',',');
+const now=()=>new Date().toISOString();
+const num=v=>{if(v==null||String(v).trim()==='')return null;const n=parseFloat(String(v).replace(',','.'));return isFinite(n)?n:null};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(t){const e=$('toast');e.textContent=t;e.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>e.hidden=true,2800)}
+
+/* ============ geometria ============ */
+const sx=x=>V.ox+x*V.k,sy=y=>V.oy-y*V.k,wx=p=>(p-V.ox)/V.k,wy=p=>(V.oy-p)/V.k;
+function colName(i){if(i<0)return'−'+colName(-i-1);let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26)}return s}
+function cell(x,y){const g=S.cfg.step;return colName(Math.floor(x/g+1e-9))+(Math.floor(y/g+1e-9)+1)}
+const vtx=id=>S.proj&&S.proj.vertices.find(v=>v.id===id);
+const faceById=id=>S.proj&&S.proj.faces.find(f=>f.id===id);
+const compById=id=>S.proj&&(S.proj.compartimentos||[]).find(c=>c.id===id);
+function segDist(px,py,a,b){const dx=b.x-a.x,dy=b.y-a.y,L=dx*dx+dy*dy;let t=L?((px-a.x)*dx+(py-a.y)*dy)/L:0;t=Math.max(0,Math.min(1,t));return Math.hypot(px-a.x-t*dx,py-a.y-t*dy)}
+const facesOf=c=>S.proj.faces.filter(f=>f.compartimento===c.id);
+const polyOf=c=>facesOf(c).map(f=>vtx(f.de)).filter(Boolean);
+function area(p){let s=0;for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];s+=a.x*b.y-b.x*a.y}return s/2}
+function inPoly(x,y,p){let c=false;for(let i=0,j=p.length-1;i<p.length;j=i++){const a=p[i],b=p[j];if(((a.y>y)!=(b.y>y))&&(x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x))c=!c}return c}
+function origemComp(c){const p=polyOf(c);return{x:Math.min(...p.map(q=>q.x)),y:Math.min(...p.map(q=>q.y))}}
+const compAt=(x,y)=>(S.proj.compartimentos||[]).find(c=>inPoly(x,y,polyOf(c)));
+const pdOf=c=>(c&&c.pd)||S.proj.pd||2.8;
+function buildGeo(){S.GEO={};for(const c of S.proj.compartimentos||[]){const p=polyOf(c);const ccw=area(p)>0;
+  for(const f of facesOf(c)){const a=vtx(f.de),b=vtx(f.para);if(!a||!b)continue;const L=Math.hypot(b.x-a.x,b.y-a.y)||1e-9;const t={x:(b.x-a.x)/L,y:(b.y-a.y)/L};
+    const n=ccw?{x:t.y,y:-t.x}:{x:-t.y,y:t.x}; S.GEO[f.id]={a,b,t,n,L,pd:pdOf(c),comp:c.id}}}}
+function faceRef(r){const g=S.GEO[r.alvo];if(!g||r.u==null)return null;const l=r.larg||0,a=r.alt||0;return{u_ini:+(r.u-l/2).toFixed(3),u_fim:+(g.L-r.u-l/2).toFixed(3),h_piso:+(r.h0||0).toFixed(3),h_teto:+(g.pd-(r.h0||0)-a).toFixed(3),face_L:+g.L.toFixed(3),pd:g.pd}}
+const onWall=(g,u)=>({x:g.a.x+g.t.x*u,y:g.a.y+g.t.y*u});
+const onPlanif=(g,u,h)=>({x:g.a.x+g.t.x*u+g.n.x*h,y:g.a.y+g.t.y*u+g.n.y*h});
+function toUH(g,x,y){const dx=x-g.a.x,dy=y-g.a.y;return{u:dx*g.t.x+dy*g.t.y,h:dx*g.n.x+dy*g.n.y}}
+function nearestFace(x,y,comp){let best=null,bd=18/V.k;for(const f of S.proj.faces){const g=S.GEO[f.id];if(!g||(comp&&g.comp!==comp))continue;const d=segDist(x,y,g.a,g.b);if(d<bd){bd=d;best=f}}return best}
+function wallHit(x,y){ // na planificação: qual parede rebatida contém o ponto
+  for(const f of S.proj.faces){const g=S.GEO[f.id];if(!g||g.comp!==S.comp)continue;const q=toUH(g,x,y);if(q.u>=0&&q.u<=g.L&&q.h>=0&&q.h<=g.pd)return{f,g,u:q.u,h:q.h}}return null}
+function snapPt(x,y){const tol=14/V.k;for(const v of S.proj.vertices)if(Math.hypot(v.x-x,v.y-y)<tol)return{x:v.x,y:v.y,vtx:v.id};
+  if(S.cfg.snap){const g=S.cfg.step,gx=Math.round(x/g)*g,gy=Math.round(y/g)*g;if(Math.hypot(gx-x,gy-y)<tol)return{x:+gx.toFixed(3),y:+gy.toFixed(3)}}
+  return{x:+x.toFixed(3),y:+y.toFixed(3)}}
+const snapU=u=>Math.round(u/0.05)*0.05;
+function toGlobal(x,y,h){const s=S.proj.sistema_coordenadas.global,r=(s.rotacao_graus||0)*Math.PI/180;
+  return{x:+(s.x+x*Math.cos(r)-y*Math.sin(r)).toFixed(3),y:+(s.y+x*Math.sin(r)+y*Math.cos(r)).toFixed(3),z:+((s.z||0)+(h||0)).toFixed(3)}}
+// posição de um registro: na planta (x,y) ou na parede (alvo + u,h)
+function regXY(r){const g=r.alvo&&S.GEO[r.alvo];
+  if(r.u!=null&&g){if(S.view==='planif'&&g.comp===S.comp)return onPlanif(g,r.u,(r.h0!=null?r.h0+(r.alt||0)/2:(r.h||0)));return onWall(g,r.u)}
+  if(r.x!=null)return{x:r.x,y:r.y};if(g)return onWall(g,g.L/2);return null}
+
+/* ============ desenho ============ */
+const NS='http://www.w3.org/2000/svg';
+function el(tag,attrs,parent,text){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,k==='font-size'?attrs[k]*S.cfg.fs:attrs[k]);if(text!=null)e.textContent=text;(parent||svg).appendChild(e);return e}
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const stColor=s=>s==='ok'?css('--ok'):s==='divergente'?css('--bad'):css('--wait');
+const pts=a=>a.map(p=>sx(p.x)+','+sy(p.y)).join(' ');
+const txt=(g,x,y,t,o={})=>el('text',Object.assign({x,y,'font-size':10.5,fill:css('--ink'),'font-family':css('--f-data'),'paint-order':'stroke',stroke:css('--paper'),'stroke-width':3},o),g,t);
+function render(){
+  if(!S.proj)return;try{updBack()}catch(e){} buildGeo(); svg.innerHTML='';
+  const W=svg.clientWidth,H=svg.clientHeight, PL=S.view==='planif';
+  if(S.img&&$('lyImg').checked){const i=S.img;el('image',{href:i.src,x:sx(i.x0),y:sy(i.ytop),width:i.w*V.k,height:i.w*i.ar*V.k,opacity:.85,preserveAspectRatio:'none'})}
+  if($('lyGrid').checked){let g=S.cfg.step;while(g*V.k<10)g*=2;const x0=Math.floor(wx(0)/g)*g,x1=wx(W),y0=Math.floor(wy(H)/g)*g,y1=wy(0);const gg=el('g',{});
+    for(let x=x0;x<=x1;x+=g){const M=Math.abs(x-Math.round(x))<1e-6;el('line',{x1:sx(x),y1:0,x2:sx(x),y2:H,stroke:css(M?'--grid2':'--grid'),'stroke-width':M?1:.6},gg)}
+    for(let y=y0;y<=y1;y+=g){const M=Math.abs(y-Math.round(y))<1e-6;el('line',{x1:0,y1:sy(y),x2:W,y2:sy(y),stroke:css(M?'--grid2':'--grid'),'stroke-width':M?1:.6},gg)}
+    if(g*V.k>=20){el('rect',{x:0,y:0,width:W,height:16,fill:css('--panel'),opacity:.9},gg);el('rect',{x:0,y:0,width:26,height:H,fill:css('--panel'),opacity:.9},gg);
+      for(let x=x0;x<=x1;x+=g){const c=sx(x+g/2);if(c>26)el('text',{x:c,y:12,'text-anchor':'middle','font-size':10,fill:css('--muted'),'font-family':css('--f-data')},gg,colName(Math.floor(x/S.cfg.step+1e-9)))}
+      for(let y=y0;y<=y1;y+=g){const c=sy(y+g/2);if(c>16)el('text',{x:13,y:c+3,'text-anchor':'middle','font-size':10,fill:css('--muted'),'font-family':css('--f-data')},gg,String(Math.floor(y/S.cfg.step+1e-9)+1))}}
+    el('circle',{cx:sx(0),cy:sy(0),r:4,fill:'none',stroke:css('--muted'),'stroke-width':1.5},gg);el('text',{x:sx(0)+6,y:sy(0)+14,'font-size':9.5,fill:css('--muted'),'font-family':css('--f-data')},gg,'0;0')}
+  const gm=el('g',{}),showM=$('lyModel').checked,keys=$('lyKeys').checked;
+  // planificação: paredes rebatidas do ambiente escolhido
+  if(PL&&showM){const c=compById(S.comp);if(c){const p=polyOf(c);el('polygon',{points:pts(p),fill:css('--floor'),stroke:css('--model'),'stroke-width':1},gm);
+    for(const f of facesOf(c)){const g=S.GEO[f.id];if(!g)continue;const q=[g.a,g.b,onPlanif(g,g.L,g.pd),onPlanif(g,0,g.pd)];
+      const cf=S.regs.find(r=>r.tipo==='conferencia'&&r.alvo===f.id);const sel=S.sel&&S.sel.kind==='face'&&S.sel.id===f.id;
+      el('polygon',{points:pts(q),fill:css('--wall'),stroke:sel?css('--accent'):cf?stColor(cf.status):css('--model'),'stroke-width':sel?3:1.4,opacity:.97},gm);
+      el('polygon',{points:pts([g.a,g.b,onPlanif(g,g.L,.1),onPlanif(g,0,.1)]),fill:css('--grid2'),opacity:.6},gm);
+      if(keys){const m=onPlanif(g,g.L/2,g.pd*.62);txt(gm,sx(m.x),sy(m.y),`${f.id.split('-').pop()} · ${f2(g.L)} × ${f2(g.pd)}`,{'text-anchor':'middle','font-size':11,fill:css('--model')})}
+      const nf=fotosDa(f.id);if(nf){const m=onPlanif(g,g.L/2,g.pd*.38);badge(gm,sx(m.x),sy(m.y),'▣ '+nf,css('--muted'),false)}}}}
+  if(showM){for(const c of S.proj.compartimentos||[]){if(PL&&c.id!==S.comp)continue;const selc=S.sel&&S.sel.kind==='comp'&&S.sel.id===c.id;
+      if(selc)el('polygon',{points:pts(polyOf(c)),fill:css('--accent'),opacity:.12},gm)}
+    for(const f of S.proj.faces){const g=S.GEO[f.id];if(!g)continue;const dim=PL&&g.comp!==S.comp;const sel=S.sel&&S.sel.kind==='face'&&S.sel.id===f.id;
+      el('line',{x1:sx(g.a.x),y1:sy(g.a.y),x2:sx(g.b.x),y2:sy(g.b.y),stroke:sel?css('--accent'):css('--model'),'stroke-width':sel?6:3,'stroke-linecap':'round',opacity:dim?.25:1},gm);
+      if(keys&&!PL){const m=onWall(g,g.L/2);txt(gm,sx(m.x),sy(m.y)-6,f.id.split('-').pop()+' · '+f2(g.L),{'text-anchor':'middle','font-size':11,fill:css('--model')})}}
+    for(const v of S.proj.vertices){el('circle',{cx:sx(v.x),cy:sy(v.y),r:4,fill:css('--paper'),stroke:css('--model'),'stroke-width':2},gm);if(keys&&!PL)txt(gm,sx(v.x)+7,sy(v.y)-7,v.id)}
+    for(const c of S.proj.compartimentos||[]){if(PL&&c.id!==S.comp)continue;const p=polyOf(c);if(!p.length)continue;const cx=c.centroide_x??p.reduce((s,q)=>s+q.x,0)/p.length,cy=c.centroide_y??p.reduce((s,q)=>s+q.y,0)/p.length;
+      el('text',{x:sx(cx),y:sy(cy),'text-anchor':'middle','font-size':13,'font-weight':700,fill:css('--model'),opacity:.8},gm,c.nome&&!/provis/.test(c.nome)?c.nome:c.id);
+      el('text',{x:sx(cx),y:sy(cy)+15,'text-anchor':'middle','font-size':10.5,fill:css('--muted'),'font-family':css('--f-data')},gm,c.id+' · '+f2(Math.abs(area(p)))+' m² eixo')}}
+  // elementos
+  if($('lyElem').checked){const ge=el('g',{});for(const r of S.regs.filter(r=>r.tipo==='elemento')){if(PL&&r.hospedeiro&&r.hospedeiro.indexOf(S.comp)!==0&&r.u==null)continue;const e=EL(r.classe),col=e.fam==='instalacao'?css('--inst'):css('--ink');const sel=S.sel&&S.sel.kind==='reg'&&S.sel.id===r.guid;const sc=sel?css('--accent'):col;
+    const g=r.alvo&&S.GEO[r.alvo];
+    if(g&&r.u!=null){const l=r.larg||e.larg;
+      if(PL&&g.comp===S.comp){const q=[onPlanif(g,r.u-l/2,r.h0),onPlanif(g,r.u+l/2,r.h0),onPlanif(g,r.u+l/2,r.h0+r.alt),onPlanif(g,r.u-l/2,r.h0+r.alt)];
+        el('polygon',{points:pts(q),fill:e.cod==='J'?css('--chip'):css('--paper'),stroke:sc,'stroke-width':sel?2.5:1.4},ge);const m=onPlanif(g,r.u,r.h0+r.alt/2);txt(ge,sx(m.x),sy(m.y)+4,e.cod,{'text-anchor':'middle',fill:col,'font-weight':700})}
+      else if(!PL||g.comp===S.comp){const a=onWall(g,r.u-l/2),b=onWall(g,r.u+l/2);el('line',{x1:sx(a.x),y1:sy(a.y),x2:sx(b.x),y2:sy(b.y),stroke:sc,'stroke-width':e.fam==='instalacao'?5:7},ge);
+        const m=onWall(g,r.u),o={x:-g.n.x*.22,y:-g.n.y*.22};txt(ge,sx(m.x+o.x),sy(m.y+o.y)+4,e.cod,{'text-anchor':'middle',fill:col,'font-weight':700,'font-size':9.5})}}
+    else if(r.x!=null){const s=Math.max(5,(r.larg||e.larg)*V.k/2);if(e.cod==='PIL')el('rect',{x:sx(r.x)-s,y:sy(r.y)-s,width:2*s,height:2*s,fill:sc},ge);else{el('circle',{cx:sx(r.x),cy:sy(r.y),r:s,fill:css('--paper'),stroke:sc,'stroke-width':2},ge)}
+      txt(ge,sx(r.x)+s+3,sy(r.y)+4,e.cod,{fill:col,'font-weight':700})}}}
+  // cotas aos encontros do elemento selecionado (planificação)
+  if(PL&&S.sel&&S.sel.kind==='reg'){const r=S.regs.find(q=>q.guid===S.sel.id);const g=r&&r.alvo&&S.GEO[r.alvo];if(g&&r.u!=null&&g.comp===S.comp){const q=faceRef(r),gc=el('g',{}),hm=r.h0+r.alt/2,l=r.larg/2,col=css('--accent');
+    const dim=(p1,p2,t)=>{const A=p1,B=p2;el('line',{x1:sx(A.x),y1:sy(A.y),x2:sx(B.x),y2:sy(B.y),stroke:col,'stroke-width':1.5,'stroke-dasharray':'4 2'},gc);const M={x:(A.x+B.x)/2,y:(A.y+B.y)/2};txt(gc,sx(M.x),sy(M.y)-4,t,{'text-anchor':'middle','font-weight':700})};
+    dim(onPlanif(g,0,hm),onPlanif(g,r.u-l,hm),f2(q.u_ini));dim(onPlanif(g,r.u+l,hm),onPlanif(g,g.L,hm),f2(q.u_fim));dim(onPlanif(g,r.u,0),onPlanif(g,r.u,r.h0),f2(q.h_piso));dim(onPlanif(g,r.u,r.h0+r.alt),onPlanif(g,r.u,g.pd),f2(q.h_teto))}}
+  // registros de campo
+  if($('lyReg').checked){const gr=el('g',{});
+    for(const r of S.regs){if(r.tipo==='elemento'||r.tipo==='foto'||r.tipo==='midia')continue;const sel=S.sel&&S.sel.kind==='reg'&&S.sel.id===r.guid,col=stColor(r.status);
+      if(r.tipo==='conferencia'){const g=S.GEO[r.alvo];if(!g||(PL&&g.comp===S.comp))continue;el('line',{x1:sx(g.a.x),y1:sy(g.a.y),x2:sx(g.b.x),y2:sy(g.b.y),stroke:col,'stroke-width':sel?10:7,opacity:.45,'stroke-linecap':'round'},gr);
+        const m=onWall(g,g.L/2);badge(gr,sx(m.x+g.n.x*.25),sy(m.y+g.n.y*.25),r.valor_campo!=null?f2(r.valor_campo):'?',col,sel);continue}
+      if(r.tipo==='medida'){if(PL)continue;el('line',{x1:sx(r.x),y1:sy(r.y),x2:sx(r.x2),y2:sy(r.y2),stroke:col,'stroke-width':sel?3.5:2,'stroke-dasharray':'6 3'},gr);for(const[px,py]of[[r.x,r.y],[r.x2,r.y2]])el('circle',{cx:sx(px),cy:sy(py),r:3.5,fill:col},gr);
+        badge(gr,sx((r.x+r.x2)/2),sy((r.y+r.y2)/2),r.valor_campo!=null?f2(r.valor_campo):f2(r.valor_projeto)+'?',col,sel);continue}
+      const p=regXY(r);if(!p)continue;const cx=sx(p.x),cy=sy(p.y);el('path',{d:`M${cx} ${cy} l-9 -15 a10 10 0 1 1 18 0 z`,fill:sel?css('--accent'):col,stroke:css('--paper'),'stroke-width':1.5},gr);el('text',{x:cx,y:cy-18,'text-anchor':'middle','font-size':10,'font-weight':700,fill:'#fff'},gr,String(r.seq))}
+    if(S.pendMed)el('circle',{cx:sx(S.pendMed.x),cy:sy(S.pendMed.y),r:6,fill:'none',stroke:css('--accent'),'stroke-width':3},gr);
+    for(const c of S.cal)el('circle',{cx:c.sxp,cy:c.syp,r:7,fill:'none',stroke:css('--accent'),'stroke-width':3},gr)}
+  if(S.draw.length){const gd=el('g',{});el('polyline',{points:pts(S.draw),fill:'none',stroke:css('--accent'),'stroke-width':3},gd);
+    S.draw.forEach((p,i)=>el('circle',{cx:sx(p.x),cy:sy(p.y),r:i?5:8,fill:i?css('--accent'):css('--paper'),stroke:css('--accent'),'stroke-width':3},gd));
+    for(let i=1;i<S.draw.length;i++){const a=S.draw[i-1],b=S.draw[i];txt(gd,sx((a.x+b.x)/2),sy((a.y+b.y)/2)-6,f2(Math.hypot(b.x-a.x,b.y-a.y)),{'text-anchor':'middle',fill:css('--accent-ink')})}}
+}
+function badge(g,x,y,t,col,sel){const F=S.cfg.fs,w=(t.length*6.6+12)*F;el('rect',{x:x-w/2,y:y-9*F,width:w,height:18*F,rx:9*F,fill:sel?css('--accent'):col},g);el('text',{x,y:y+4*S.cfg.fs,'text-anchor':'middle','font-size':11,'font-weight':700,fill:sel?css('--accent-ink'):'#fff','font-family':css('--f-data')},g,t)}
+const fotosDa=fid=>S.regs.filter(r=>r.alvo===fid).reduce((n,r)=>n+(r.fotos?r.fotos.length:0),0);
+function fit(){if(!S.proj)return;buildGeo();const W=svg.clientWidth,H=svg.clientHeight;let P=[];
+  if(S.view==='planif'&&compById(S.comp)){for(const f of facesOf(compById(S.comp))){const g=S.GEO[f.id];if(g)P.push(g.a,g.b,onPlanif(g,0,g.pd),onPlanif(g,g.L,g.pd))}}
+  else{P=S.proj.vertices.map(v=>({x:v.x,y:v.y}));if(S.img)P.push({x:S.img.x0,y:S.img.ytop},{x:S.img.x0+S.img.w,y:S.img.ytop-S.img.w*S.img.ar});S.regs.forEach(r=>{if(r.x!=null)P.push({x:r.x,y:r.y})})}
+  if(!P.length)P=[{x:0,y:0},{x:6,y:5}];const xs=P.map(p=>p.x),ys=P.map(p=>p.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  const pad=48;V.k=Math.max(8,Math.min((W-2*pad)/Math.max(x1-x0,1),(H-2*pad-50)/Math.max(y1-y0,1)));V.ox=(W-(x1-x0)*V.k)/2-x0*V.k;V.oy=(H-30+(y1-y0)*V.k)/2+y0*V.k;render()}
+
+/* ============ toque ============ */
+const P=new Map();let gest=null;
+svg.addEventListener('pointerdown',e=>{svg.setPointerCapture(e.pointerId);P.set(e.pointerId,{x:e.offsetX,y:e.offsetY,x0:e.offsetX,y0:e.offsetY});
+  if(P.size===2){const[a,b]=[...P.values()];gest={d:Math.hypot(a.x-b.x,a.y-b.y),k:V.k,cx:(a.x+b.x)/2,cy:(a.y+b.y)/2,ox:V.ox,oy:V.oy,pinch:true}}});
+svg.addEventListener('pointermove',e=>{const x=wx(e.offsetX),y=wy(e.offsetY);let t=`x ${f2(x)}  y ${f2(y)}  ·  ${cell(x,y)}`;
+  if(S.view==='planif'&&S.proj){const w=wallHit(x,y);if(w)t=`face ${w.f.id}  ·  u ${f2(w.u)}  h ${f2(w.h)}`}$('coord').textContent=t;
+  const p=P.get(e.pointerId);if(!p)return;const dx=e.offsetX-p.x,dy=e.offsetY-p.y;p.x=e.offsetX;p.y=e.offsetY;
+  if(P.size===2&&gest){const[a,b]=[...P.values()];const d=Math.hypot(a.x-b.x,a.y-b.y),k=Math.max(4,Math.min(2000,gest.k*d/gest.d)),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2,X=(gest.cx-gest.ox)/gest.k,Y=(gest.oy-gest.cy)/gest.k;V.k=k;V.ox=cx-X*k;V.oy=cy+Y*k;render();return}
+  if(P.size===1&&(Math.hypot(p.x-p.x0,p.y-p.y0)>6||p.moved)){p.moved=true;V.ox+=dx;V.oy+=dy;render()}});
+svg.addEventListener('pointerup',e=>{const p=P.get(e.pointerId);P.delete(e.pointerId);if(p&&!p.moved&&!(gest&&gest.pinch))tap(e.offsetX,e.offsetY);if(!P.size)gest=null});
+svg.addEventListener('pointercancel',e=>{P.delete(e.pointerId);if(!P.size)gest=null});
+svg.addEventListener('wheel',e=>{e.preventDefault();const f=Math.exp(-e.deltaY*.0015),X=wx(e.offsetX),Y=wy(e.offsetY);V.k=Math.max(4,Math.min(2000,V.k*f));V.ox=e.offsetX-X*V.k;V.oy=e.offsetY+Y*V.k;render()},{passive:false});
+
+/* ============ ferramentas ============ */
+const HINT={nav:'Arraste para mover, pince para ampliar. Toque num ambiente, face, elemento ou registro para ver e editar.',
+ desenhar:'Toque nos cantos do ambiente, em ordem, sobre a malha. Toque de novo no 1º ponto para fechar.',
+ elemento:'Escolha o elemento na barra e toque na parede (ou no piso, para pilar, ralo e ponto de luz).',
+ foto:'Toque numa face (parede) para ver e juntar as fotos dela.',
+ conferir:'Toque numa face para conferir o comprimento de projeto com o medido.',
+ nota:'Toque onde quer anotar. Na planificação, a nota fica presa à parede.',
+ medida:'Toque no início e no fim da medida (na planta).',calibrar:'Toque no 1º ponto conhecido da imagem.'};
+function setTool(t){mark();S.tool=t;S.pendMed=null;S.cal=[];if(t!=='desenhar')S.draw=[];document.querySelectorAll('#tools [data-tool]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.tool===t));
+  $('hint').textContent=HINT[t];$('palette').hidden=t!=='elemento';if(t==='elemento')palette();if((t==='desenhar'||t==='medida')&&S.view==='planif')setView('planta');render()}
+document.querySelectorAll('#tools [data-tool]').forEach(b=>b.onclick=()=>{if(b.dataset.tool==='calibrar'&&!S.img){toast('Carregue uma imagem de fundo na aba Projeto primeiro.');openPanel('proj');return}setTool(b.dataset.tool)});
+$('btnFit').onclick=fit;
+function setView(v){mark();if(v==='planif'){if(!(S.proj.compartimentos||[]).length){toast('Desenhe ou carregue um ambiente primeiro.');return}if(!compById(S.comp))S.comp=S.proj.compartimentos[0].id}
+  S.view=v;$('vPlanta').setAttribute('aria-pressed',v==='planta');$('vPlanif').setAttribute('aria-pressed',v==='planif');fit()}
+$('vPlanta').onclick=()=>setView('planta');$('vPlanif').onclick=()=>setView('planif');
+function palette(){const pal=$('palette');const grp=f=>ELEM.filter(e=>e.fam===f).map(e=>`<button data-c="${e.cod}" class="${f==='instalacao'?'inst':''}" aria-pressed="${S.classe===e.cod}" title="${e.nome}">${e.cod} · ${e.nome}</button>`).join('');
+  pal.innerHTML=`<span class="grp">Arquitetônicos</span>${grp('arquitetonico')}<span class="grp">Instalações</span>${grp('instalacao')}`;pal.querySelectorAll('button').forEach(b=>b.onclick=()=>{S.classe=b.dataset.c;palette()})}
+
+const projRegs=()=>S.regs;
+function nextSeq(){return S.regs.reduce((m,r)=>Math.max(m,r.seq||0),0)+1}
+function chave(seq,cls,comp){const c=comp||(S.proj.compartimentos||[])[0]||{};return `${S.proj.projeto}.${c.bloco||'B1'}.${c.piso||'P0'}.${cls||'CAMPO'}.${String(seq).padStart(4,'0')}`}
+// elemento hospedado: nasce com GUID, chave endereçada e vínculo fixo ao hospedeiro
+function novoElemento(e,host,extra){const comp=compById(host.comp);const seq=nextSeq();return novo('elemento',Object.assign({classe:e.cod,familia:e.fam,sistema:e.sis||'ARQ',clado:e.clado||'',hospedeiro:host.id,hospedeiro_tipo:host.tipo,alvo:host.id,larg:e.larg,alt:e.alt,id:chave(seq,'C.'+(e.sis||'ARQ'),comp),seq},extra))}
+function novo(tipo,extra){const seq=nextSeq();return Object.assign({guid:uuid(),projeto:S.proj.id,id:chave(seq),seq,tipo,status:'pendente',texto:'',valor_projeto:null,valor_campo:null,fotos:[],autor:S.cfg.autor,criado_em:now(),atualizado_em:now(),sync:'pendente'},extra)}
+
+async function tap(px,py){const x=wx(px),y=wy(py),PL=S.view==='planif';
+  if(S.tool==='calibrar')return calTap(px,py);
+  if(S.tool==='desenhar')return drawTap(x,y,px,py);
+  if(S.tool==='nav'){let hit=null;
+    for(const r of S.regs){if(r.tipo==='foto')continue;if(r.tipo==='medida'&&!PL&&segDist(x,y,{x:r.x,y:r.y},{x:r.x2,y:r.y2})<12/V.k){hit={kind:'reg',id:r.guid};continue}
+      if(r.tipo==='elemento'){const g=r.alvo&&S.GEO[r.alvo];if(g&&r.u!=null){if(PL&&g.comp===S.comp){const q=toUH(g,x,y);if(Math.abs(q.u-r.u)<=Math.max(r.larg/2,.12)&&q.h>=r.h0-.08&&q.h<=r.h0+r.alt+.08)hit={kind:'reg',id:r.guid}}
+          else{const m=onWall(g,r.u);if(Math.hypot(m.x-x,m.y-y)<Math.max(r.larg/2,14/V.k))hit={kind:'reg',id:r.guid}}}
+        else if(r.x!=null&&Math.hypot(r.x-x,r.y-y)<Math.max(r.larg,16/V.k))hit={kind:'reg',id:r.guid};continue}
+      if(r.tipo==='nota'){const p=regXY(r);if(p&&Math.hypot(sx(p.x)-px,sy(p.y)-15-py)<16)hit={kind:'reg',id:r.guid}}}
+    if(!hit&&!PL){const f=nearestFace(x,y);const cf=f&&S.regs.find(r=>r.tipo==='conferencia'&&r.alvo===f.id);if(cf)hit={kind:'reg',id:cf.guid}}
+    if(!hit&&!PL){const v=S.proj.vertices.find(v=>Math.hypot(sx(v.x)-px,sy(v.y)-py)<14);if(v)hit={kind:'vtx',id:v.id}}
+    if(!hit&&PL){const w=wallHit(x,y);if(w)hit={kind:'face',id:w.f.id}}
+    if(!hit){const f=nearestFace(x,y,PL?S.comp:null);if(f)hit={kind:'face',id:f.id}}
+    if(!hit){const c=(S.proj.compartimentos||[]).find(c=>inPoly(x,y,polyOf(c)));if(c)hit={kind:'comp',id:c.id}}
+    mark();S.sel=hit;showItem();if(hit)openPanel('item');render();return}
+  if(S.tool==='elemento'){const e=EL(S.classe);
+    if(e.onde!=='face'){if(PL&&wallHit(x,y)){toast(e.nome+' vai no '+e.onde+'. Toque dentro do ambiente.');return}const p=snapPt(x,y);const c=compAt(p.x,p.y)||compAt(x,y);
+      if(!c){toast(e.nome+' precisa nascer dentro de um ambiente (hospedeiro: '+e.onde+').');return}const o=origemComp(c);
+      const r=novoElemento(e,{id:c.id+'/'+e.onde.toUpperCase(),tipo:e.onde,comp:c.id},{x:p.x,y:p.y,xl:+(p.x-o.x).toFixed(3),yl:+(p.y-o.y).toFixed(3),celula:cell(p.x,p.y)});await save(r);select(r);return}
+    let f,u,h;if(PL){const w=wallHit(x,y);if(!w){toast('Toque dentro de uma parede rebatida.');return}f=w.f;u=w.u;h=w.h}else{f=nearestFace(x,y);if(!f){toast('Toque sobre uma parede.');return}u=toUH(S.GEO[f.id],x,y).u}
+    const g=S.GEO[f.id];u=Math.max(e.larg/2,Math.min(g.L-e.larg/2,snapU(u)));let h0=e.h0;if(PL&&e.cod==='NI')h0=Math.max(0,snapU(h-e.alt/2));
+    const m=onWall(g,u);const r=novoElemento(e,{id:f.id,tipo:'face',comp:g.comp},{u:+u.toFixed(3),h0,x:+m.x.toFixed(3),y:+m.y.toFixed(3),celula:cell(m.x,m.y)});
+    await save(r);select(r);return}
+  if(S.tool==='foto'||S.tool==='conferir'){let f=null;if(PL){const w=wallHit(x,y);f=w&&w.f}if(!f)f=nearestFace(x,y,PL?S.comp:null);if(!f){toast('Nenhuma face perto do toque.');return}
+    if(S.tool==='foto'){S.sel={kind:'face',id:f.id};showItem();openPanel('item');render();return}
+    let r=S.regs.find(q=>q.tipo==='conferencia'&&q.alvo===f.id);if(!r){const g=S.GEO[f.id],m=onWall(g,g.L/2);r=novo('conferencia',{alvo:f.id,x:+m.x.toFixed(3),y:+m.y.toFixed(3),celula:cell(m.x,m.y),valor_projeto:+g.L.toFixed(3),secao:f.secao||''});await save(r)}select(r);return}
+  if(S.tool==='nota'){if(PL){const w=wallHit(x,y);if(w){const m=onWall(w.g,w.u);const r=novo('nota',{alvo:w.f.id,u:+snapU(w.u).toFixed(3),h:+snapU(w.h).toFixed(3),x:+m.x.toFixed(3),y:+m.y.toFixed(3),celula:cell(m.x,m.y)});await save(r);select(r);return}}
+    const p=snapPt(x,y);const r=novo('nota',{x:p.x,y:p.y,celula:cell(p.x,p.y),alvo:p.vtx||''});await save(r);select(r);return}
+  if(S.tool==='medida'){const p=snapPt(x,y);if(!S.pendMed){S.pendMed=p;$('hint').textContent='Agora toque no fim da medida.';render();return}
+    const a=S.pendMed;S.pendMed=null;const d=Math.hypot(p.x-a.x,p.y-a.y);if(d<.005){toast('Os dois pontos coincidem.');render();return}
+    const r=novo('medida',{x:a.x,y:a.y,x2:p.x,y2:p.y,celula:cell(a.x,a.y)+':'+cell(p.x,p.y),alvo:[a.vtx,p.vtx].filter(Boolean).join('→'),valor_projeto:+d.toFixed(3)});await save(r);select(r);$('hint').textContent=HINT.medida}}
+function select(r){mark();S.sel={kind:'reg',id:r.guid};showItem();openPanel('item');render()}
+
+/* ============ desenhar ambiente (nasce do croqui) ============ */
+function drawTap(x,y,px,py){const p=snapPt(x,y);
+  if(S.draw.length>=3&&Math.hypot(sx(S.draw[0].x)-px,sy(S.draw[0].y)-py)<18)return fecharAmbiente();
+  S.draw.push(p);$('hint').textContent=S.draw.length<3?`${S.draw.length} ponto(s). Continue nos cantos.`:`${S.draw.length} pontos. Toque no 1º ponto (ou em “Fechar ambiente”) para fechar.`;
+  const pane=$('pane-item');pane.innerHTML=`<h2>Novo ambiente</h2><p class="note">${S.draw.length} canto(s) marcados. Imanta nos vértices existentes e nos nós da malha.</p><div class="row"><button class="pri" id="dClose" ${S.draw.length<3?'disabled':''}>Fechar ambiente</button><button id="dUndo">Desfazer ponto</button><button id="dCancel">Cancelar</button></div>`;
+  $('dClose').onclick=fecharAmbiente;$('dUndo').onclick=()=>{S.draw.pop();render()};$('dCancel').onclick=()=>{S.draw=[];setTool('nav');showItem()};render()}
+async function fecharAmbiente(){const P=S.draw.slice();S.draw=[];const pr=S.proj;
+  const vid=p=>{let v=pr.vertices.find(q=>Math.hypot(q.x-p.x,q.y-p.y)<.001);if(v)return v.id;const g=S.cfg.step,onNode=Math.abs(p.x/g-Math.round(p.x/g))<1e-6&&Math.abs(p.y/g-Math.round(p.y/g))<1e-6;
+    const base=cell(p.x,p.y);let n=onNode?0:1;while(pr.vertices.find(q=>q.id===base+'.'+n))n++;v={id:base+'.'+n,x:p.x,y:p.y,faixa_h:base.replace(/[0-9]/g,''),faixa_v:base.replace(/[^0-9]/g,''),ocorrencia:String(n)};pr.vertices.push(v);return v.id};
+  const ids=P.map(vid);const k=(pr.compartimentos||[]).length+1;const cid='CP-'+String(k).padStart(2,'0');const suf=cid.slice(3);
+  const letras='abcdefghijklmnopqrstuvwxyz';const faces=ids.map((de,i)=>{const para=ids[(i+1)%ids.length],a=vtx(de),b=vtx(para);
+    return{id:`${cid}-${letras[i]}`,compartimento:cid,de,para,eixo:'',secao:`SEC-${suf}-${letras[i].toUpperCase()}00`,lado:'E',comprimento_eixo_m:+Math.hypot(b.x-a.x,b.y-a.y).toFixed(3)}});
+  pr.faces.push(...faces);const ar=Math.abs(area(P));const c={id:cid,nome:'',bloco:'B1',piso:'P0',faces:faces.map(f=>f.id.split('-').pop()).join(';'),area_eixo_m2:+ar.toFixed(2),pd:pr.pd,origem:'croqui',criado_em:now()};
+  (pr.compartimentos=pr.compartimentos||[]).push(c);await saveProj();S.comp=cid;S.sel={kind:'comp',id:cid};setTool('nav');showItem();openPanel('item');toast(`Ambiente ${cid} criado com ${faces.length} faces.`);render()}
+
+/* ============ calibração de imagem ============ */
+function calTap(px,py){const i=S.img;const u=(wx(px)-i.x0)/i.w*i.nw,v=(i.ytop-wy(py))/(i.w*i.ar)*i.nh;S.cal.push({u,v,sxp:px,syp:py});render();const n=S.cal.length,pane=$('pane-item');openPanel('item');
+  pane.innerHTML=`<h2>Calibrar imagem · ponto ${n} de 2</h2><p class="note">Coordenadas reais (m, sistema do croqui) do ponto tocado.</p><div class="grid2"><label>x (m)<input id="cx" inputmode="decimal"></label><label>y (m)<input id="cy" inputmode="decimal"></label></div>
+  <label>ou escolha um vértice<select id="cv"><option value="">—</option>${S.proj.vertices.map(v=>`<option>${v.id}</option>`).join('')}</select></label><button class="pri" id="cok">Confirmar ponto ${n}</button>`;
+  $('cv').onchange=()=>{const v=vtx($('cv').value);if(v){$('cx').value=v.x;$('cy').value=v.y}};
+  $('cok').onclick=async()=>{const X=num($('cx').value),Y=num($('cy').value);if(X==null||Y==null){toast('Preencha x e y.');return}S.cal[n-1].X=X;S.cal[n-1].Y=Y;
+    if(n===1){$('hint').textContent='Toque no 2º ponto conhecido da imagem.';pane.innerHTML='<p class="note">Agora toque no 2º ponto da imagem.</p>';return}
+    const[a,b]=S.cal,dp=Math.hypot(b.u-a.u,b.v-a.v),dw=Math.hypot(b.X-a.X,b.Y-a.Y);if(dp<1||dw<=0){toast('Pontos muito próximos. Recomece.');setTool('calibrar');return}
+    const s=dw/dp;i.w=s*i.nw;i.x0=a.X-s*a.u;i.ytop=a.Y+s*a.v;await DB.set('img:'+S.proj.id,i);$('imgInfo').textContent=`Imagem calibrada: ${f2(i.w)} m de largura.`;toast('Imagem calibrada.');setTool('nav');fit();pane.innerHTML='<p class="note">Imagem calibrada.</p>'}}
+
+/* ============ painel ============ */
+const TIPO={nota:'Anotação',medida:'Medida',conferencia:'Conferência de face',elemento:'Elemento',foto:'Fotos da face',midia:'Gravação'};
+/* ============ navegação: pilha de passos para o Voltar (botão e voltar do Android) ============ */
+const NAV={stack:[],busy:false,marked:false,hist:(()=>{try{return window.top===window&&!!history.pushState}catch(e){return false}})()};
+const panelOpen=()=>!$('panel').classList.contains('closed');
+const curTab=()=>{const b=document.querySelector('.tabs [aria-selected="true"]');return b?b.dataset.tab:'item'};
+const snap=()=>({view:S.view,comp:S.comp,tool:S.tool,sel:S.sel?Object.assign({},S.sel):null,open:panelOpen(),tab:curTab()});
+const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+function mark(){if(NAV.busy||NAV.marked||!S.proj)return;NAV.marked=true;const s0=snap();setTimeout(()=>{NAV.marked=false;const s1=snap();
+  if(!same(s0,s1)){NAV.stack.push(s0);if(NAV.stack.length>60)NAV.stack.shift();if(NAV.hist)try{history.pushState({croqui:NAV.stack.length},'')}catch(e){}updBack()}},0)}
+function updBack(){$('btnBack').disabled=!NAV.stack.length;const t={item:'Selecionado',lista:'Registros',proj:'Projeto'}[curTab()];
+  $('crumb').textContent=`${S.view==='planif'?'Planificação'+(S.comp?' · '+S.comp:''):'Planta'} › ${t}${S.sel?' › '+(S.sel.kind==='reg'?'registro':S.sel.kind==='face'?'face '+S.sel.id:S.sel.kind==='comp'?'ambiente '+S.sel.id:'vértice '+S.sel.id):''}`}
+function restaura(s){NAV.busy=true;try{S.view=s.view;S.comp=s.comp;$('vPlanta').setAttribute('aria-pressed',s.view==='planta');$('vPlanif').setAttribute('aria-pressed',s.view==='planif');
+  setTool(s.tool);S.sel=s.sel;showItem();if(s.open)openPanel(s.tab);else $('panel').classList.add('closed');fit()}finally{NAV.busy=false}updBack()}
+function voltar(){const s=NAV.stack.pop();if(s)restaura(s);else updBack()}
+$('btnBack').onclick=()=>{if(!NAV.stack.length)return;if(NAV.hist)history.back();else voltar()};
+addEventListener('popstate',()=>{if(NAV.stack.length)voltar()});
+function openPanel(tab){mark();document.querySelectorAll('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===tab));['item','lista','proj'].forEach(t=>$('pane-'+t).hidden=t!==tab);$('panel').classList.remove('closed');if(tab==='lista')showList();if(tab==='proj')showProj()}
+document.querySelectorAll('.tabs [data-tab]').forEach(b=>b.onclick=()=>openPanel(b.dataset.tab));
+$('btnClose').onclick=()=>{mark();$('panel').classList.add('closed')};$('btnPanel').onclick=()=>{mark();if(panelOpen())$('panel').classList.add('closed');else openPanel('proj')};
+const thumbs=list=>`<div class="thumbs">${list.map(f=>`<img src="${f.dataURL}" alt="foto ${esc(f.nome)}">`).join('')}</div>`;
+function bindThumbs(root){root.querySelectorAll('.thumbs img').forEach(im=>im.onclick=()=>{$('bigPhoto').querySelector('img').src=im.src;$('bigPhoto').hidden=false})}
+$('bigPhoto').onclick=()=>$('bigPhoto').hidden=true;
+function gl(x,y,h){const g=toGlobal(x,y,h);return `${f2(g.x)}; ${f2(g.y)}; ${f2(g.z)}`}
+
+function showItem(){const pane=$('pane-item'),s=S.sel;
+  if(!s){pane.innerHTML='<p class="note">Nada selecionado. Escolha uma ferramenta embaixo e toque na prancha, ou use “Mover” e toque num elemento para ver os dados.</p>';return}
+  if(s.kind==='vtx'){const v=vtx(s.id);pane.innerHTML=`<h2>Vértice</h2><dl class="kv"><dt>chave</dt><dd>${v.id}</dd><dt>local x; y</dt><dd>${f2(v.x)}; ${f2(v.y)}</dd><dt>sistema maior</dt><dd>${gl(v.x,v.y,0)}</dd><dt>célula</dt><dd>${cell(v.x,v.y)}</dd></dl>`;return}
+  if(s.kind==='comp'){const c=compById(s.id);const p=polyOf(c);pane.innerHTML=`<h2>Ambiente</h2><label>Designação do ambiente<input id="cNome" value="${esc(c.nome&&!/provis/.test(c.nome)?c.nome:'')}" placeholder="ex.: Quarto 1, Banho social"></label>
+    <div class="grid2"><label>Pé-direito (m)<input id="cPd" inputmode="decimal" value="${f2(pdOf(c))}"></label><label>Piso<input id="cPiso" value="${esc(c.piso||'P0')}"></label></div>
+    <dl class="kv"><dt>chave</dt><dd>${c.id}</dd><dt>faces</dt><dd>${facesOf(c).length}</dd><dt>área (eixo)</dt><dd>${f2(Math.abs(area(p)))} m²</dd>${c.area_util_m2?`<dt>área útil</dt><dd>${f2(c.area_util_m2)} m²</dd>`:''}<dt>origem local</dt><dd>canto SO (${f2(origemComp(c).x)}; ${f2(origemComp(c).y)})</dd><dt>perímetro</dt><dd>${f2(facesOf(c).reduce((s,f)=>s+(S.GEO[f.id]?S.GEO[f.id].L:0),0))} m</dd></dl>
+    <div class="row"><button class="pri" id="cSave">Salvar</button><button id="cPlan">Ver planificação</button></div>`;
+    $('cSave').onclick=async()=>{c.nome=$('cNome').value.trim();c.pd=num($('cPd').value)||c.pd;c.piso=$('cPiso').value.trim()||'P0';c.atualizado_em=now();await saveProj();toast('Ambiente salvo.');render()};
+    $('cPlan').onclick=()=>{S.comp=c.id;setView('planif')};return}
+  if(s.kind==='face'){const f=faceById(s.id),g=S.GEO[f.id];const fs=S.regs.filter(r=>r.alvo===f.id&&r.fotos&&r.fotos.length);const els=S.regs.filter(r=>r.tipo==='elemento'&&r.alvo===f.id);
+    pane.innerHTML=`<h2>Face ${f.id}</h2><dl class="kv"><dt>de → para</dt><dd>${f.de} → ${f.para}</dd><dt>seção</dt><dd>${f.secao||'—'}</dd><dt>comprimento</dt><dd>${f2(g.L)} m × PD ${f2(g.pd)}</dd><dt>elementos</dt><dd>${els.map(r=>r.classe).join(', ')||'nenhum'}</dd></dl>
+    <p class="note">Sistema da face: a parede vira um plano. Origem no encontro com ${esc(f.de)} junto ao piso; u corre até ${esc(f.para)} (${f2(g.L)}), h sobe até o teto (${f2(g.pd)}). Tudo que nasce nela é cotado a partir desses encontros.</p>
+    <h2>Fotos desta face (${fotosDa(f.id)})</h2>${fs.map(r=>`<div class="note">${esc(TIPO[r.tipo])} ${r.seq}${r.texto?' · '+esc(r.texto):''}</div>${thumbs(r.fotos)}`).join('')||'<p class="note">Nenhuma foto ainda.</p>'}
+    <label>Juntar fotos a esta face<input type="file" id="fFoto" accept="image/*" capture="environment" multiple></label><label>Legenda das fotos (opcional)<input id="fLeg" placeholder="ex.: vista geral, trinca junto à janela"></label>
+    <h2>Voz e vídeo desta face</h2><div class="row"><button id="fVoz">● Gravar voz</button><button id="fVid">● Gravar vídeo com sensores</button></div><div id="fMidias" class="list"></div>
+    <div class="row"><button class="pri" id="fConf">Conferir esta face</button><button id="fPlan">Ver planificação</button></div>`;bindThumbs(pane);
+    $('fVoz').onclick=()=>gravar('audio',f.id);$('fVid').onclick=()=>gravar('video',f.id);listaMidias($('fMidias'),f.id);
+    $('fFoto').onchange=async e=>{const fotos=[];for(const fl of e.target.files)fotos.push(await shrink(fl));if(!fotos.length)return;const m=onWall(g,g.L/2);const r=novo('foto',{alvo:f.id,vista:'face',x:+m.x.toFixed(3),y:+m.y.toFixed(3),celula:cell(m.x,m.y),fotos,texto:$('fLeg').value.trim()});await save(r);toast(fotos.length+' foto(s) presas à face '+f.id+'.');showItem();render()};
+    $('fConf').onclick=async()=>{let r=S.regs.find(q=>q.tipo==='conferencia'&&q.alvo===f.id);if(!r){const m=onWall(g,g.L/2);r=novo('conferencia',{alvo:f.id,x:+m.x.toFixed(3),y:+m.y.toFixed(3),celula:cell(m.x,m.y),valor_projeto:+g.L.toFixed(3),secao:f.secao||''});await save(r)}select(r)};
+    $('fPlan').onclick=()=>{S.comp=g.comp;setView('planif')};return}
+  const r=S.regs.find(q=>q.guid===s.id);if(!r){S.sel=null;showItem();return}
+  const delta=(r.valor_campo!=null&&r.valor_projeto!=null)?r.valor_campo-r.valor_projeto:null;const p=regXY(r)||{x:r.x,y:r.y};
+  const isEl=r.tipo==='elemento',e=isEl&&EL(r.classe),onFace=isEl&&r.alvo&&r.u!=null;
+  pane.innerHTML=`<h2>${isEl?esc(e.nome):TIPO[r.tipo]} ${r.exemplo?'<span class="ex">exemplo</span>':''}</h2>
+   <dl class="kv"><dt>chave</dt><dd>${r.id}</dd><dt>célula</dt><dd>${esc(r.celula)}</dd>${r.alvo?`<dt>alvo</dt><dd>${esc(r.alvo)}</dd>`:''}
+   ${r.x!=null?`<dt>sistema maior</dt><dd>${gl(r.x,r.y,isEl?r.h0:r.h)}</dd>`:''}
+   ${r.valor_projeto!=null?`<dt>projeto</dt><dd>${f2(r.valor_projeto)} m</dd>`:''}
+   ${delta!=null?`<dt>diferença</dt><dd class="${Math.abs(delta)<=.02?'delta-ok':'delta-bad'}">${delta>=0?'+':''}${f2(delta)} m (${Math.round(delta*1000)} mm)</dd>`:''}<dt>envio</dt><dd>${r.sync}</dd></dl>
+   ${isEl?`<dl class="kv"><dt>hospedeiro</dt><dd>${esc(r.hospedeiro||r.alvo)} (fixo)</dd>${e.sis?`<dt>sistema · clado</dt><dd>${e.sis} · ${e.clado}</dd>`:''}<dt>GUID</dt><dd>${r.guid}</dd></dl>
+     <label>Tipo (mesma família, mesmo hospedeiro)<select id="eCls">${ELEM.filter(q=>q.onde===e.onde&&q.fam===e.fam).map(q=>`<option value="${q.cod}" ${q.cod===r.classe?'selected':''}>${q.cod} · ${q.nome}</option>`).join('')}</select></label>
+     ${onFace?(()=>{const q=faceRef(r);return `<div class="note">Cotas na face, a partir dos encontros (bordas do elemento):</div><div class="grid2"><label>Do encontro inicial (${esc(faceById(r.alvo).de)})<input id="eUi" inputmode="decimal" value="${f2(q.u_ini)}"></label><label>Até o encontro final (${esc(faceById(r.alvo).para)})<input id="eUf" inputmode="decimal" value="${f2(q.u_fim)}"></label><label>Do piso<input id="eH0" inputmode="decimal" value="${f2(q.h_piso)}"></label><label>Até o teto<input id="eHt" inputmode="decimal" value="${f2(q.h_teto)}"></label></div>`})():`<dl class="kv"><dt>no ambiente (origem canto SO)</dt><dd>x ${f2(r.xl)} · y ${f2(r.yl)}</dd></dl>`}
+     <div class="grid2">
+     <label>Largura (m)<input id="eL" inputmode="decimal" value="${f2(r.larg)}"></label><label>Altura (m)<input id="eA" inputmode="decimal" value="${f2(r.alt)}"></label></div>`:''}
+   ${r.tipo==='medida'||r.tipo==='conferencia'?`<label>Medido em campo (m)<input id="iVal" inputmode="decimal" value="${r.valor_campo!=null?String(r.valor_campo).replace('.',','):''}" placeholder="ex.: 3,18"></label>`:''}
+   <div><div class="note" style="margin-bottom:4px">Situação</div><div class="seg" role="group"><button class="s-pen" data-st="pendente" aria-pressed="${r.status==='pendente'}">A conferir</button><button class="s-ok" data-st="ok" aria-pressed="${r.status==='ok'}">Confere</button><button class="s-div" data-st="divergente" aria-pressed="${r.status==='divergente'}">Diverge</button></div></div>
+   <label>Observação<textarea id="iTxt" placeholder="O que você viu na obra">${esc(r.texto)}</textarea></label>
+   <label>Fotos<input type="file" id="iFoto" accept="image/*" capture="environment" multiple></label>${thumbs(r.fotos||[])}
+   ${r.tipo==='midia'?'<div id="iMid" class="list"></div>':`<div class="row"><button id="iVoz">● Gravar voz sobre este item</button></div><div id="iMid" class="list"></div>`}
+   <div class="row"><button class="pri" id="iSave">Salvar</button><button class="warn" id="iDel">Excluir</button></div>
+   <p class="note" id="delAsk" hidden>Excluir este registro? <button class="warn" id="iDelYes">Sim</button> <button id="iDelNo">Não</button></p>`;bindThumbs(pane);
+  if($('iVoz'))$('iVoz').onclick=()=>gravar('audio',r.guid);if(r.tipo==='midia')listaMidias($('iMid'),null,[r]);else listaMidias($('iMid'),r.guid);
+  let st=r.status;pane.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{st=b.dataset.st;pane.querySelectorAll('.seg button').forEach(q=>q.setAttribute('aria-pressed',q===b))});
+  const iVal=$('iVal');if(iVal)iVal.oninput=()=>{const v=num(iVal.value);if(v!=null&&r.valor_projeto!=null){st=Math.abs(v-r.valor_projeto)<=.02?'ok':'divergente';pane.querySelectorAll('.seg button').forEach(q=>q.setAttribute('aria-pressed',q.dataset.st===st))}};
+  if(isEl)$('eCls').onchange=()=>{const q=EL($('eCls').value);$('eL').value=f2(q.larg);$('eA').value=f2(q.alt)};
+  $('iFoto').onchange=async ev=>{for(const f of ev.target.files)r.fotos.push(await shrink(f));r.sync='pendente';r.atualizado_em=now();await save(r);showItem();render()};
+  $('iSave').onclick=async()=>{if(iVal)r.valor_campo=num(iVal.value);if(isEl){const q=EL($('eCls').value);r.classe=q.cod;r.sistema=q.sis||'ARQ';r.clado=q.clado||'';r.larg=num($('eL').value)??r.larg;r.alt=num($('eA').value)??r.alt;
+      if(onFace){const g=S.GEO[r.alvo],q=faceRef(r),ui=num($('eUi').value),uf=num($('eUf').value),hp=num($('eH0').value),ht=num($('eHt').value);
+        if(uf!=null&&Math.abs(uf-q.u_fim)>.0005&&!(ui!=null&&Math.abs(ui-q.u_ini)>.0005))r.u=g.L-uf-r.larg/2;else if(ui!=null)r.u=ui+r.larg/2;
+        if(ht!=null&&Math.abs(ht-q.h_teto)>.0005&&!(hp!=null&&Math.abs(hp-q.h_piso)>.0005))r.h0=g.pd-ht-r.alt;else if(hp!=null)r.h0=hp;
+        r.u=+Math.max(r.larg/2,Math.min(g.L-r.larg/2,r.u)).toFixed(3);r.h0=+Math.max(0,r.h0).toFixed(3);const m=onWall(g,r.u);r.x=+m.x.toFixed(3);r.y=+m.y.toFixed(3);r.celula=cell(r.x,r.y)}
+      else if(r.xl!=null){const o=origemComp(compById(r.hospedeiro.split('/')[0]));r.xl=+(r.x-o.x).toFixed(3);r.yl=+(r.y-o.y).toFixed(3)}}
+    r.texto=$('iTxt').value;r.status=st;r.sync='pendente';r.atualizado_em=now();r.exemplo=false;await save(r);toast('Salvo neste aparelho.');showItem();render()};
+  $('iDel').onclick=()=>$('delAsk').hidden=false;$('iDelNo').onclick=()=>$('delAsk').hidden=true;
+  $('iDelYes').onclick=async()=>{await DB.del(r.guid);S.regs=S.regs.filter(q=>q!==r);S.sel=null;if(r.sync==='enviado'){S.proj.apagados=(S.proj.apagados||[]).concat({guid:r.guid,id:r.id,apagado_em:now()});await saveProj()}showItem();render();updPend()}}
+function showList(){const pane=$('pane-lista');if(!S.regs.length){pane.innerHTML='<p class="note">Nenhum registro ainda neste projeto.</p>';return}
+  const cnt=k=>S.regs.filter(r=>r.status===k&&r.tipo!=='foto').length;
+  pane.innerHTML=`<div class="row"><span class="badge b-ok">${cnt('ok')} conferem</span><span class="badge b-div">${cnt('divergente')} divergem</span><span class="badge b-pen">${cnt('pendente')} a conferir</span></div><div class="list">${
+   S.regs.slice().sort((a,b)=>a.seq-b.seq).map(r=>`<button class="item" data-g="${r.guid}"><span class="sw" style="background:${r.tipo==='foto'?css('--muted'):stColor(r.status)}"></span><span style="min-width:0"><div class="t">${r.seq}. ${r.tipo==='elemento'?esc(EL(r.classe).nome):r.tipo==='midia'?(r.midia==='video'?'Vídeo':'Voz'):TIPO[r.tipo]} ${r.alvo?'· '+esc(r.alvo):''} ${r.exemplo?'<span class="ex">exemplo</span>':''}</div><div class="s">${esc(r.celula)} ${r.valor_campo!=null?'· '+f2(r.valor_campo)+' m':''} ${r.fotos&&r.fotos.length?'· '+r.fotos.length+' foto(s)':''} ${r.texto?'· '+esc(r.texto.slice(0,40)):''}</div></span><span class="badge">${r.sync==='enviado'?'enviado':'na fila'}</span></button>`).join('')}</div>`;
+  pane.querySelectorAll('.item').forEach(b=>b.onclick=()=>{const r=S.regs.find(q=>q.guid===b.dataset.g);if(r.tipo==='foto'){S.sel={kind:'face',id:r.alvo};showItem();openPanel('item');render()}else select(r)})}
+function shrink(file){return new Promise(res=>{const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{const m=1280,s=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*s;c.height=im.height*s;c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({nome:file.name,tirada_em:now(),dataURL:c.toDataURL('image/jpeg',.72)})};im.src=fr.result};fr.readAsDataURL(file)})}
+
+/* ============ gravação de voz e vídeo com trilha de sensores ============ */
+const REC={};
+async function gravar(tipo,alvo){
+  if(!navigator.mediaDevices||!window.MediaRecorder){toast('Este navegador não grava. Abra o app pelo endereço https ou pelo arquivo no Chrome.');return}
+  let stream;try{stream=await navigator.mediaDevices.getUserMedia(tipo==='video'?{audio:true,video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}}:{audio:true})}
+  catch(e){toast('Sem acesso ao '+(tipo==='video'?'câmera/microfone':'microfone')+'. Na prévia do Claude isso é bloqueado; use o app instalado.');return}
+  const t0=performance.now(),amostras=[],ult={o:0,m:0};let geo=null;
+  const add=o=>{amostras.push(Object.assign({t:Math.round(performance.now()-t0)},o))};
+  const onO=e=>{const n=performance.now();if(n-ult.o<100)return;ult.o=n;const hd=e.webkitCompassHeading!=null?e.webkitCompassHeading:(e.absolute&&e.alpha!=null?(360-e.alpha)%360:null);
+    add({k:'ori',alpha:r1(e.alpha),beta:r1(e.beta),gamma:r1(e.gamma),rumo:r1(hd),abs:!!e.absolute});REC.live=`rumo ${hd!=null?Math.round(hd)+'°':'—'} · incl. ${e.beta!=null?Math.round(e.beta)+'°':'—'}`};
+  const onM=e=>{const n=performance.now();if(n-ult.m<100)return;ult.m=n;const a=e.accelerationIncludingGravity||{};add({k:'acc',ax:r2(a.x),ay:r2(a.y),az:r2(a.z)})};
+  const r1=v=>v==null?null:Math.round(v*10)/10,r2=v=>v==null?null:Math.round(v*100)/100;
+  const oriEv='ondeviceorientationabsolute'in window?'deviceorientationabsolute':'deviceorientation';
+  addEventListener(oriEv,onO);addEventListener('devicemotion',onM);
+  try{geo=navigator.geolocation&&navigator.geolocation.watchPosition(p=>add({k:'gps',lat:p.coords.latitude,lon:p.coords.longitude,prec_m:Math.round(p.coords.accuracy),alt:p.coords.altitude}),()=>{},{enableHighAccuracy:true,maximumAge:2000})}catch(e){}
+  let wake=null;try{wake=await navigator.wakeLock.request('screen')}catch(e){}
+  const mime=['video/webm;codecs=vp8,opus','video/webm','video/mp4','audio/webm;codecs=opus','audio/webm','audio/mp4'].filter(m=>m.startsWith(tipo==='video'?'video':'audio')).find(m=>MediaRecorder.isTypeSupported(m))||'';
+  const mr=new MediaRecorder(stream,Object.assign(mime?{mimeType:mime}:{},tipo==='video'?{videoBitsPerSecond:1500000}:{audioBitsPerSecond:48000}));const partes=[];mr.ondataavailable=e=>e.data.size&&partes.push(e.data);
+  const inicio=now();$('rec').hidden=false;const pv=$('recPrev');pv.hidden=tipo!=='video';if(tipo==='video'){pv.srcObject=stream;pv.play().catch(()=>{})}
+  const tick=setInterval(()=>{$('recInfo').textContent=`${tipo==='video'?'vídeo':'voz'} · ${Math.round((performance.now()-t0)/1000)} s · ${REC.live||'sensores: aguardando'} · ${amostras.length} leituras`},300);
+  const fim=async salvar=>{clearInterval(tick);removeEventListener(oriEv,onO);removeEventListener('devicemotion',onM);try{geo!=null&&navigator.geolocation.clearWatch(geo)}catch(e){}try{wake&&wake.release()}catch(e){}
+    await new Promise(res=>{mr.onstop=res;mr.state!=='inactive'?mr.stop():res()});stream.getTracks().forEach(t=>t.stop());pv.srcObject=null;$('rec').hidden=true;if(!salvar){toast('Gravação descartada.');return}
+    const blob=new Blob(partes,{type:mr.mimeType||mime||(tipo==='video'?'video/webm':'audio/webm')});const dur=Math.round(performance.now()-t0);
+    const host=faceById(alvo)?{face:alvo}:{registro:alvo};const g=host.face&&S.GEO[alvo];const m=g?onWall(g,g.L/2):null;
+    const ext=(blob.type.split('/')[1]||'webm').split(';')[0];
+    const r=novo('midia',Object.assign({midia:tipo,alvo:host.face||((S.regs.find(q=>q.guid===alvo)||{}).alvo||''),vinculo:host,duracao_ms:dur,inicio,mime:blob.type,bytes:blob.size,
+      sensores:{relogio:'t = ms desde o início da gravação (mesmo relógio do vídeo)',taxa:'orientação e aceleração até 10/s, GPS ~1/s',amostras},texto:''},m?{x:+m.x.toFixed(3),y:+m.y.toFixed(3),celula:cell(m.x,m.y)}:{}));
+    r.arquivo=`${r.id}.${ext}`;await DB.set('blob:'+r.guid,blob);await save(r);toast(`${tipo==='video'?'Vídeo':'Voz'} salvo: ${Math.round(dur/1000)} s, ${amostras.length} leituras de sensores.`);showItem();render()};
+  $('recStop').onclick=()=>fim(true);$('recCancel').onclick=()=>fim(false);mr.start(1000)}
+async function listaMidias(box,alvo,lista){if(!box)return;const L=lista||S.regs.filter(r=>r.tipo==='midia'&&(r.vinculo&&(r.vinculo.face===alvo||r.vinculo.registro===alvo)));
+  if(!L.length){box.innerHTML='<p class="note">Nenhuma gravação ainda.</p>';return}box.innerHTML='';
+  for(const r of L){const b=await DB.get('blob:'+r.guid);const d=document.createElement('div');d.className='midia';
+    d.innerHTML=`<div class="note">${r.midia==='video'?'Vídeo':'Voz'} ${r.seq} · ${Math.round(r.duracao_ms/1000)} s · ${(r.sensores.amostras||[]).length} leituras · ${r.sync==='enviado'?'enviado':'na fila'}</div>`;
+    if(b){const el2=document.createElement(r.midia==='video'?'video':'audio');el2.controls=true;el2.playsInline=true;el2.src=URL.createObjectURL(b);d.appendChild(el2);
+      const lv=document.createElement('div');lv.className='sensLive';lv.textContent='sensores sincronizados aparecem aqui durante a reprodução';d.appendChild(lv);
+      el2.ontimeupdate=()=>{const t=el2.currentTime*1000,A=r.sensores.amostras;const ult=k=>{let x=null;for(const a of A){if(a.t>t)break;if(a.k===k)x=a}return x};const o=ult('ori'),g=ult('gps');
+        lv.textContent=`t ${(t/1000).toFixed(1)} s · rumo ${o&&o.rumo!=null?Math.round(o.rumo)+'°':'—'} · inclinação ${o&&o.beta!=null?Math.round(o.beta)+'°':'—'} · giro ${o&&o.gamma!=null?Math.round(o.gamma)+'°':'—'}${g?` · GPS ±${g.prec_m} m`:''}`}}
+    else d.insertAdjacentHTML('beforeend','<p class="note">Arquivo não está neste aparelho.</p>');box.appendChild(d)}}
+
+/* ============ projetos ============ */
+function novoProj(nome,origem,pd,modelo){const id='PRJ-'+Date.now().toString(36);const m=modelo||{};
+  return{id,projeto:(nome||m.projeto||'projeto').replace(/\s+/g,'-'),nome:nome||m.projeto||'Projeto',ref:m.ref||'R0-malha-local',origem,pd:pd||2.8,pasta_destino:'',
+    sistema_coordenadas:m.sistema_coordenadas||{tipo:'local',unidade:'m',eixos:'x à direita, y para cima',origem_local:'0;0',global:{x:0,y:0,z:0,rotacao_graus:0,referencia:''}},
+    eixos:m.eixos||[],vertices:m.vertices||[],compartimentos:m.compartimentos||[],faces:m.faces||[],criado_em:now(),apagados:[]}}
+async function saveProj(){S.proj.atualizado_em=now();await DB.set('proj:'+S.proj.id,S.proj);const L=(await DB.get('projetos'))||[];const i=L.findIndex(p=>p.id===S.proj.id),it={id:S.proj.id,nome:S.proj.nome,origem:S.proj.origem};if(i<0)L.push(it);else L[i]=it;await DB.set('projetos',L)}
+async function loadProj(id){const p=await DB.get('proj:'+id);if(!p)return false;S.proj=p;S.cfg.projId=id;saveCfg();S.img=(await DB.get('img:'+id))||null;S.regs=(await DB.all()).filter(r=>r.projeto===id);S.sel=null;S.view='planta';
+  S.comp=(p.compartimentos[0]||{}).id;$('vPlanta').setAttribute('aria-pressed',true);$('vPlanif').setAttribute('aria-pressed',false);$('projName').textContent=p.nome+' · '+({existente:'projeto existente',croqui:'nasceu do croqui',generico:'genérico'}[p.origem]||'');
+  $('imgInfo').textContent=S.img?(S.img.nome||'Imagem')+' carregada.':'Nenhuma imagem carregada.';updPend();showItem();fit();return true}
+async function showProj(){const L=(await DB.get('projetos'))||[];$('projSel').innerHTML=L.map(p=>`<option value="${p.id}" ${p.id===S.proj.id?'selected':''}>${esc(p.nome)}</option>`).join('');
+  const pr=S.proj,g=pr.sistema_coordenadas.global;$('projInfo').innerHTML=`<dt>origem</dt><dd>${pr.origem}</dd><dt>ambientes</dt><dd>${(pr.compartimentos||[]).length}</dd><dt>faces</dt><dd>${pr.faces.length}</dd><dt>registros</dt><dd>${S.regs.length}</dd>`;
+  $('pNome').value=pr.nome;$('pPd').value=f2(pr.pd);$('pPasta').value=pr.pasta_destino||'';pastaLink();$('gX').value=g.x;$('gY').value=g.y;$('gZ').value=g.z||0;$('gR').value=g.rotacao_graus||0;$('gRef').value=g.referencia||''}
+function pastaLink(){const u=S.proj.pasta_destino;$('pPastaLink').innerHTML=/^https:\/\//.test(u||'')?`<a href="${esc(u)}" target="_blank" rel="noopener">Abrir a pasta do projeto</a> (precisa de conexão)`:'Sem pasta definida. Os pacotes vão pelo menu Compartilhar.'}
+$('projSel').onchange=()=>loadProj($('projSel').value);
+$('btnNovo').onclick=()=>{$('novoBox').hidden=false;$('nNome').focus()};$('nCancel').onclick=()=>$('novoBox').hidden=true;
+document.querySelectorAll('input[name=orig]').forEach(r=>r.onchange=()=>$('nFileL').hidden=document.querySelector('input[name=orig]:checked').value!=='existente');
+$('nCriar').onclick=async()=>{const o=document.querySelector('input[name=orig]:checked').value;let m=null,nome=$('nNome').value.trim();
+  if(o==='existente'){const f=$('nFile').files[0];if(!f){toast('Escolha o arquivo .json do projeto.');return}try{m=JSON.parse(await f.text())}catch(e){toast('Não consegui ler o JSON.');return}if(!Array.isArray(m.vertices)||!Array.isArray(m.faces)){toast('Esse JSON não tem vertices e faces.');return}}
+  if(o==='generico'&&!nome)nome='Genérico '+new Date().toLocaleDateString('pt-BR');if(!nome&&o==='croqui'){toast('Dê um nome ao projeto.');return}
+  S.proj=novoProj(nome,o,num($('nPd').value)||2.8,m);S.cfg.step=+$('nStep').value;$('gridStep').value=S.cfg.step.toFixed(2);await saveProj();$('novoBox').hidden=true;await loadProj(S.proj.id);showProj();
+  if(o!=='existente'){setTool('desenhar');$('panel').classList.add('closed');toast('Projeto criado. Desenhe o primeiro ambiente na malha.')}else toast('Projeto carregado. Toque num ambiente para dar a designação.')};
+$('pNome').onchange=async()=>{S.proj.nome=$('pNome').value.trim()||S.proj.nome;await saveProj();loadProj(S.proj.id)};
+$('pPd').onchange=async()=>{S.proj.pd=num($('pPd').value)||S.proj.pd;await saveProj();render()};
+$('pPasta').onchange=async()=>{S.proj.pasta_destino=$('pPasta').value.trim();await saveProj();pastaLink()};
+['gX','gY','gZ','gR','gRef'].forEach(id=>$(id).onchange=async()=>{const g=S.proj.sistema_coordenadas.global;g.x=num($('gX').value)||0;g.y=num($('gY').value)||0;g.z=num($('gZ').value)||0;g.rotacao_graus=num($('gR').value)||0;g.referencia=$('gRef').value.trim();await saveProj()});
+
+/* ============ fila, pacotes, compartilhar ============ */
+async function save(r){const i=S.regs.findIndex(q=>q.guid===r.guid);if(i<0)S.regs.push(r);else S.regs[i]=r;await DB.put(r);updPend()}
+function updPend(){const n=S.regs.filter(r=>r.sync!=='enviado').length;$('pend').textContent=n+(n===1?' pendente':' pendentes')}
+function updNet(){const on=navigator.onLine;$('net').className='pill '+(on?'on':'off');$('netTxt').textContent=on?'com conexão':'sem conexão'}
+function regOut({sync,...r}){const o=Object.assign({},r);if(r.tipo==='elemento'&&r.u!=null&&S.GEO[r.alvo])o.na_face=faceRef(r);if(r.x!=null)o.global=toGlobal(r.x,r.y,r.tipo==='elemento'?r.h0:r.h);return o}
+function pacote(soPend){const p=S.proj;return{formato:'croqui-campo/0.2',tipo:'registros',projeto:p.projeto,projeto_id:p.id,ref:p.ref,origem:'campo',autor:S.cfg.autor,gerado_em:now(),pasta_destino:p.pasta_destino,
+  sistema_coordenadas:p.sistema_coordenadas,malha:{passo_m:S.cfg.step,enderecamento:'coluna letra (x) + linha número (y), como planilha'},
+  registros:S.regs.filter(r=>!soPend||r.sync!=='enviado').map(regOut),instalacoes:instalacoes(),apagados:p.apagados||[]}}
+function instalacoes(){const els=S.regs.filter(r=>r.tipo==='elemento'&&EL(r.classe).sis);const E=[],Pt=[],Rel=[];
+  for(const r of els){const e=EL(r.classe);E.push({guid:r.guid,nome_curto:`${e.nome} · ${r.id}`,sistema:e.sis,clado:e.clado,espec:{chave:r.id,classe:e.cod,larg_m:r.larg,alt_m:r.alt},suposicao:e.supo||null});
+    for(const p of e.portas||[])Pt.push({id:`${r.guid}:${p}`,elemento:r.guid,papel:p,sentido:p.startsWith('ent')?'entra':'sai',dn:null});
+    Rel.push({elemento:r.guid,tipo:'hospeda-em',alvo:r.hospedeiro||r.alvo,atributos:r.u!=null?faceRef(r):{x_local:r.xl,y_local:r.yl,origem:'canto SO do ambiente'}})}
+  return{_sobre:{origem:'croqui de campo',esquema:'instalacoes-prediais/esquema-base (schema.sql, B6)',nota:'ligações (tubulações, eletrodutos) nascem no sistema de instalações, não no campo'},elementos:E,portas:Pt,ligacoes:[],relacoes_espaciais:Rel}}
+function projetoCompleto(){const p=S.proj;const{apagados,...m}=p;return Object.assign({formato:'croqui-campo/0.2',tipo:'projeto'},m,{
+  elementos:S.regs.filter(r=>r.tipo==='elemento').map(regOut),instalacoes:instalacoes(),registros:S.regs.filter(r=>r.tipo!=='elemento').map(regOut),gerado_em:now()})}
+async function entregar(obj,rotulo){const txt=JSON.stringify(obj,null,1);$('exportBox').value=txt;const nome=`${S.proj.projeto}_${rotulo}_${obj.gerado_em.slice(0,16).replace(/[:T]/g,'-')}.json`;
+  try{const file=new File([txt],nome,{type:'application/json'});const files=[file];for(const r of (obj.registros||[]).filter(r=>r.tipo==='midia')){const b=await DB.get('blob:'+r.guid);if(b)files.push(new File([b],r.arquivo,{type:b.type}))}
+    if(navigator.canShare&&navigator.canShare({files})){await navigator.share({files,title:nome});return 'compartilhado'}if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:nome});return 'compartilhado'}}catch(e){if(e.name==='AbortError')return 'cancelado'}
+  try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=nome;document.body.appendChild(a);a.click();a.remove();return 'baixado'}catch(e){return 'texto'}}
+$('btnShareCampo').onclick=async()=>{const r=await entregar(pacote(false),'campo');if(r!=='cancelado')toast(r==='compartilhado'?'Pacote entregue ao app escolhido.':'Pacote gerado. Se não baixou, use “Copiar pacote”.')};
+$('btnShareProj').onclick=async()=>{const r=await entregar(projetoCompleto(),'projeto');if(r!=='cancelado')toast(r==='compartilhado'?'Projeto entregue ao app escolhido.':'Projeto gerado. Se não baixou, use “Copiar pacote”.')};
+$('btnCopy').onclick=()=>{const t=$('exportBox');if(!t.value){t.value=JSON.stringify(pacote(false),null,1)}navigator.clipboard.writeText(t.value).then(()=>toast('Pacote copiado.'),()=>{t.select();toast('Selecionado. Use copiar do teclado.')})};
+async function sincronizar(auto){const pend=S.regs.filter(r=>r.sync!=='enviado');if(!pend.length){if(!auto)toast('Nada pendente. Tudo já foi enviado.');return}
+  if(S.cfg.endpoint){if(!navigator.onLine){if(!auto)toast(`Sem conexão. ${pend.length} registro(s) seguem na fila.`);return}
+    try{const res=await fetch(S.cfg.endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pacote(true))});if(!res.ok)throw new Error('HTTP '+res.status);
+      for(const r of pend){r.sync='enviado';await DB.put(r)}S.proj.apagados=[];await saveProj();updPend();toast(`${pend.length} registro(s) enviados.`)}catch(e){toast('O envio falhou ('+e.message+'). Os registros continuam na fila.')}}
+  else if(!auto){const r=await entregar(pacote(true),'campo');if(r==='compartilhado'){for(const q of pend){q.sync='enviado';await DB.put(q)}updPend();toast(`${pend.length} registro(s) entregues ao app escolhido.`)}else if(r!=='cancelado'){openPanel('proj');toast('Pacote gerado. A fila só limpa quando o compartilhamento confirma.')}}}
+$('btnSync').onclick=()=>sincronizar(false);
+addEventListener('online',()=>{updNet();if(S.cfg.auto)sincronizar(true)});addEventListener('offline',updNet);
+
+/* ============ carregar ============ */
+$('fJson').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());
+  if(d.formato&&String(d.formato).startsWith('croqui-campo')&&d.tipo==='projeto'){const{elementos=[],registros=[],formato,tipo,gerado_em,...m}=d;await DB.set('proj:'+m.id,Object.assign({apagados:[]},m));S.proj=m;await saveProj();for(const r of elementos.concat(registros)){r.projeto=m.id;r.sync=r.sync||'enviado';await DB.put(r)}await loadProj(m.id);toast('Projeto completo importado.')}
+  else if(d.formato&&String(d.formato).startsWith('croqui-campo')){let n=0;for(const r of d.registros||[]){if(!S.regs.find(q=>q.guid===r.guid)){r.projeto=S.proj.id;r.sync='enviado';await save(r);n++}}toast(n+' registro(s) juntados ao projeto.')}
+  else if(Array.isArray(d.vertices)&&Array.isArray(d.faces)){S.proj=novoProj(d.projeto,'existente',2.8,d);await saveProj();await loadProj(S.proj.id);toast('Modelo carregado como novo projeto.')}
+  else toast('Esse JSON não é modelo nem pacote de campo.')}catch(err){toast('Não consegui ler o JSON: '+err.message)}render();e.target.value=''};
+$('fImg').onchange=e=>{const f=e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=async()=>{const xs=S.proj.vertices.map(v=>v.x),ext=xs.length?Math.max(...xs)-Math.min(...xs)||6:6;
+  S.img={src:fr.result,nw:im.width,nh:im.height,ar:im.height/im.width,w:ext*1.6,x0:-ext*.3,ytop:ext*1.6*im.height/im.width-ext*.3,nome:f.name};await DB.set('img:'+S.proj.id,S.img);
+  $('imgInfo').textContent=`${f.name} carregada, ainda sem escala. Use “Calibrar imagem”: toque em 2 pontos e diga as coordenadas.`;setView('planta');setTool('calibrar')};im.src=fr.result};fr.readAsDataURL(f);e.target.value=''};
+
+/* ============ configurações ============ */
+['lyGrid','lyImg','lyModel','lyKeys','lyElem','lyReg'].forEach(id=>$(id).onchange=render);
+$('gridStep').onchange=()=>{S.cfg.step=+$('gridStep').value;saveCfg();render()};$('snap').onchange=()=>{S.cfg.snap=$('snap').checked;saveCfg()};
+$('autor').onchange=()=>{S.cfg.autor=$('autor').value.trim()||'Operador';saveCfg()};$('endpoint').onchange=()=>{S.cfg.endpoint=$('endpoint').value.trim();saveCfg()};$('autoSync').onchange=()=>{S.cfg.auto=$('autoSync').checked;saveCfg()};
+function saveCfg(){DB.set('cfg',S.cfg)}
+function aplicaFs(){S.cfg.fs=Math.round(Math.max(.7,Math.min(2.2,S.cfg.fs))*10)/10;document.documentElement.style.setProperty('--fs',S.cfg.fs);$('fsVal').textContent=Math.round(S.cfg.fs*100)+'%';render()}
+$('fsMenos').onclick=()=>{S.cfg.fs-=.1;aplicaFs();saveCfg()};$('fsMais').onclick=()=>{S.cfg.fs+=.1;aplicaFs();saveCfg()};
+$('btnClearEx').onclick=async()=>{for(const r of S.regs.filter(r=>r.exemplo))await DB.del(r.guid);S.regs=S.regs.filter(r=>!r.exemplo);S.sel=null;showItem();render();updPend();toast('Exemplos apagados.')};
+$('btnReset').onclick=()=>$('resetAsk').hidden=false;$('btnResetNo').onclick=()=>$('resetAsk').hidden=true;
+$('btnResetYes').onclick=async()=>{for(const r of S.regs)await DB.del(r.guid);await DB.delk('proj:'+S.proj.id);await DB.delk('img:'+S.proj.id);let L=((await DB.get('projetos'))||[]).filter(p=>p.id!==S.proj.id);await DB.set('projetos',L);$('resetAsk').hidden=true;
+  if(!L.length){await semear();L=await DB.get('projetos')}await loadProj(L[0].id);showProj();toast('Projeto apagado deste aparelho.')};
+
+/* ============ início ============ */
+async function semear(){const m=JSON.parse($('seedModel').textContent);S.proj=novoProj('exemplo','existente',2.8,m);S.proj.projeto='exemplo';await saveProj();S.regs=[];
+  const ex=[];const add=(t,o)=>{const r=novo(t,Object.assign({exemplo:true},o));S.regs.push(r);ex.push(r)};
+  add('conferencia',{alvo:'CP-XYZ-d',x:0,y:1.5,celula:cell(0,1.5),valor_projeto:3.0,valor_campo:2.99,status:'ok',texto:'Trena a laser, face interna + meia seção.'});
+  add('conferencia',{alvo:'CP-XYZ-a',x:2,y:0,celula:cell(2,0),valor_projeto:4.0,valor_campo:3.94,status:'divergente',texto:'Faltam 6 cm. Conferir locação do eixo 2.'});
+  add('nota',{x:4,y:3,celula:cell(4,3),alvo:'I7.0',texto:'Pilar aparente no encontro, não previsto no croqui.'});
+  buildGeo();const addE=(cod,fid,u,extra)=>{const e=EL(cod),g=S.GEO[fid],m=onWall(g,u);const r=novoElemento(e,{id:fid,tipo:'face',comp:g.comp},Object.assign({u,h0:e.h0,x:+m.x.toFixed(3),y:+m.y.toFixed(3),celula:cell(m.x,m.y),exemplo:true},extra||{}));S.regs.push(r);ex.push(r)};
+  addE('P','CP-XYZ-a',.7);addE('J','CP-XYZ-c',2,{larg:1.2});addE('TUG','CP-XYZ-d',.6);addE('INT','CP-XYZ-a',1.35);addE('AF','CP-XYZ-b',.8);
+  {const e=EL('PL'),c=S.proj.compartimentos[0],o=origemComp(c);const r=novoElemento(e,{id:c.id+'/TETO',tipo:'teto',comp:c.id},{x:2,y:1.5,xl:+(2-o.x).toFixed(3),yl:+(1.5-o.y).toFixed(3),celula:cell(2,1.5),exemplo:true});S.regs.push(r);ex.push(r)}
+  for(const r of ex)await DB.put(r)}
+async function boot(){await DB.open();const cfg=await DB.get('cfg');if(cfg)Object.assign(S.cfg,cfg);
+  $('gridStep').value=S.cfg.step.toFixed(2);$('snap').checked=S.cfg.snap;$('autor').value=S.cfg.autor;$('endpoint').value=S.cfg.endpoint;$('autoSync').checked=S.cfg.auto;
+  if(!S.cfg.fs)S.cfg.fs=1;document.documentElement.style.setProperty('--fs',S.cfg.fs);$('fsVal').textContent=Math.round(S.cfg.fs*100)+'%';
+  let L=(await DB.get('projetos'))||[];if(!L.length){await semear();L=await DB.get('projetos')}
+  if(!(S.cfg.projId&&await loadProj(S.cfg.projId)))await loadProj(L[0].id);
+  updNet();setTool('nav');if(matchMedia('(min-width:821px)').matches)openPanel('lista');
+  addEventListener('resize',()=>render());matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',render);new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+  try{if(location.protocol.startsWith('http')&&'serviceWorker'in navigator&&!/claude/.test(location.hostname+document.referrer))navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}}
+boot();
+</script>
+
+</body></html>
