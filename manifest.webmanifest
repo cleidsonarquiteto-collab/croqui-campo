@@ -1,0 +1,17 @@
+{
+ "name": "Croqui de Campo",
+ "short_name": "Croqui",
+ "start_url": "./index.html",
+ "display": "standalone",
+ "background_color": "#eef1ef",
+ "theme_color": "#1d3b5c",
+ "lang": "pt-BR",
+ "icons": [
+  {
+   "src": "icon.svg",
+   "sizes": "any",
+   "type": "image/svg+xml",
+   "purpose": "any"
+  }
+ ]
+}
